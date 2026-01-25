@@ -152,6 +152,22 @@ function runMigrations() {
     if (orphanedServers.changes > 0) {
       console.log(`Assigned ${orphanedServers.changes} orphaned servers to user ${firstUser.id}`);
     }
+
+    // Migrate old settings to user_settings for first user
+    try {
+      const oldSettings = db.prepare('SELECT key, value FROM settings').all();
+      if (oldSettings.length > 0) {
+        const existingUserSettings = db.prepare('SELECT COUNT(*) as count FROM user_settings WHERE user_id = ?').get(firstUser.id);
+        if (existingUserSettings.count === 0) {
+          for (const setting of oldSettings) {
+            db.prepare('INSERT OR IGNORE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)').run(firstUser.id, setting.key, setting.value);
+          }
+          console.log(`Migrated ${oldSettings.length} settings to user ${firstUser.id}`);
+        }
+      }
+    } catch (err) {
+      // Old settings table might not exist, that's ok
+    }
   }
 }
 
