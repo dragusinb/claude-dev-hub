@@ -182,3 +182,43 @@ export function saveFileContent(projectId, filePath, content) {
     body: JSON.stringify({ path: filePath, content })
   });
 }
+
+// SVN operations
+export function getSvnCredentials() {
+  return request('/svn/credentials');
+}
+
+export function getSvnCredential(id) {
+  return request(`/svn/credentials/${id}`);
+}
+
+export function createSvnCredential(data) {
+  return request('/svn/credentials', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export function deleteSvnCredential(id) {
+  return request(`/svn/credentials/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function testSvnCredential(id) {
+  return request(`/svn/credentials/${id}/test`, {
+    method: 'POST'
+  });
+}
+
+export function getSvnRepos(credentialId, path = '') {
+  const params = path ? `?path=${encodeURIComponent(path)}` : '';
+  return request(`/svn/credentials/${credentialId}/repos${params}`);
+}
+
+export function checkoutSvn(data) {
+  return request('/svn/checkout', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}

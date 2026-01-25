@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { ClipboardAddon } from '@xterm/addon-clipboard';
+import { Clipboard, Copy } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
 function Terminal({ projectId }) {
@@ -10,6 +12,30 @@ function Terminal({ projectId }) {
   const wsRef = useRef(null);
   const fitAddonRef = useRef(null);
   const [status, setStatus] = useState('connecting');
+  const [copied, setCopied] = useState(false);
+
+  // Copy selected text from terminal
+  const handleCopy = async () => {
+    const xterm = xtermRef.current;
+    if (xterm && xterm.hasSelection()) {
+      const text = xterm.getSelection();
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  // Paste from clipboard
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'input', data: text }));
+      }
+    } catch (err) {
+      console.error('Paste failed:', err);
+    }
+  };
 
   useEffect(() => {
     if (!terminalRef.current || !projectId) return;
@@ -43,15 +69,37 @@ function Terminal({ projectId }) {
       fontSize: 14,
       lineHeight: 1.2,
       cursorBlink: true,
-      scrollback: 10000
+      scrollback: 10000,
+      allowProposedApi: true
     });
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
+    const clipboardAddon = new ClipboardAddon();
 
     xterm.loadAddon(fitAddon);
     xterm.loadAddon(webLinksAddon);
+    xterm.loadAddon(clipboardAddon);
     xterm.open(terminalRef.current);
+
+    // Handle Ctrl+Shift+V for paste
+    xterm.attachCustomKeyEventHandler((e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
+        handlePaste();
+        return false;
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        handleCopy();
+        return false;
+      }
+      return true;
+    });
+
+    // Handle right-click paste
+    terminalRef.current.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      handlePaste();
+    });
 
     xtermRef.current = xterm;
     fitAddonRef.current = fitAddon;
@@ -160,6 +208,22 @@ function Terminal({ projectId }) {
           <span className="text-xs text-slate-400">{status}</span>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleCopy}
+            className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded transition-colors flex items-center gap-1"
+            title="Copy selection (Ctrl+Shift+C)"
+          >
+            <Copy className="w-3 h-3" />
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+          <button
+            onClick={handlePaste}
+            className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded transition-colors flex items-center gap-1"
+            title="Paste (Ctrl+Shift+V or Right-click)"
+          >
+            <Clipboard className="w-3 h-3" />
+            Paste
+          </button>
           <button
             onClick={() => {
               if (wsRef.current?.readyState === WebSocket.OPEN) {

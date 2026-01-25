@@ -8,7 +8,7 @@ const router = express.Router();
 // List all servers
 router.get('/', (req, res) => {
   try {
-    const servers = getServers();
+    const servers = getServers(req.user.id);
     res.json(servers);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -18,7 +18,7 @@ router.get('/', (req, res) => {
 // Get single server
 router.get('/:id', (req, res) => {
   try {
-    const server = getServer(req.params.id);
+    const server = getServer(req.params.id, req.user.id);
     if (!server) {
       return res.status(404).json({ error: 'Server not found' });
     }
@@ -42,6 +42,7 @@ router.post('/', (req, res) => {
     const id = uuidv4();
     createServer({
       id,
+      userId: req.user.id,
       name,
       host,
       port: port || 22,
@@ -52,7 +53,7 @@ router.post('/', (req, res) => {
       deployPath: deployPath || '/home'
     });
 
-    const server = getServer(id);
+    const server = getServer(id, req.user.id);
     const { password: _, private_key, ...safeServer } = server;
     res.status(201).json(safeServer);
   } catch (err) {
@@ -63,12 +64,12 @@ router.post('/', (req, res) => {
 // Delete server
 router.delete('/:id', (req, res) => {
   try {
-    const server = getServer(req.params.id);
+    const server = getServer(req.params.id, req.user.id);
     if (!server) {
       return res.status(404).json({ error: 'Server not found' });
     }
 
-    deleteServer(req.params.id);
+    deleteServer(req.params.id, req.user.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -78,7 +79,7 @@ router.delete('/:id', (req, res) => {
 // Test server connection
 router.post('/:id/test', async (req, res) => {
   try {
-    const server = getServer(req.params.id);
+    const server = getServer(req.params.id, req.user.id);
     if (!server) {
       return res.status(404).json({ error: 'Server not found' });
     }
@@ -141,7 +142,7 @@ router.post('/:id/test', async (req, res) => {
 // Execute command on server
 router.post('/:id/exec', async (req, res) => {
   try {
-    const server = getServer(req.params.id);
+    const server = getServer(req.params.id, req.user.id);
     if (!server) {
       return res.status(404).json({ error: 'Server not found' });
     }

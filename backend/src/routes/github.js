@@ -1,12 +1,12 @@
 import express from 'express';
-import { getSetting } from '../models/database.js';
+import { getUserSetting } from '../models/database.js';
 
 const router = express.Router();
 
 // Get user's GitHub repos
 router.get('/repos', async (req, res) => {
   try {
-    const token = getSetting('github_token');
+    const token = getUserSetting(req.user.id, 'github_token');
     if (!token) {
       return res.status(400).json({ error: 'GitHub token not configured' });
     }
@@ -49,7 +49,7 @@ router.get('/repos', async (req, res) => {
 // Get repo branches
 router.get('/repos/:owner/:repo/branches', async (req, res) => {
   try {
-    const token = getSetting('github_token');
+    const token = getUserSetting(req.user.id, 'github_token');
     if (!token) {
       return res.status(400).json({ error: 'GitHub token not configured' });
     }
@@ -78,7 +78,7 @@ router.get('/repos/:owner/:repo/branches', async (req, res) => {
 // Check GitHub connection status
 router.get('/status', async (req, res) => {
   try {
-    const token = getSetting('github_token');
+    const token = getUserSetting(req.user.id, 'github_token');
     if (!token) {
       return res.json({ connected: false, message: 'No token configured' });
     }

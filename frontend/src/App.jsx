@@ -6,6 +6,7 @@ import Project from './pages/Project';
 import Servers from './pages/Servers';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import { isAuthenticated, checkAuth } from './services/auth';
 
 function ProtectedRoute({ children }) {
@@ -42,6 +43,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route
         path="/"
         element={

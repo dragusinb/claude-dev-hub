@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { FolderGit2, LogIn } from 'lucide-react';
 import { login } from '../services/auth';
 
@@ -80,7 +80,14 @@ function Login() {
           </button>
         </form>
 
-        <p className="text-center text-slate-500 text-sm mt-6">
+        <p className="text-center text-slate-400 text-sm mt-6">
+          Don't have an account?{' '}
+          <Link to="/register" className="text-orange-500 hover:text-orange-400">
+            Create one
+          </Link>
+        </p>
+
+        <p className="text-center text-slate-500 text-sm mt-4">
           Claude Dev Hub v1.0.0
         </p>
       </div>

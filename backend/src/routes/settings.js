@@ -1,5 +1,5 @@
 import express from 'express';
-import { getSetting, setSetting } from '../models/database.js';
+import { getUserSetting, setUserSetting, getUserSettings } from '../models/database.js';
 
 const router = express.Router();
 
@@ -7,8 +7,8 @@ const router = express.Router();
 router.get('/', (req, res) => {
   try {
     const settings = {
-      anthropicApiKey: getSetting('anthropic_api_key') ? '***configured***' : null,
-      githubToken: getSetting('github_token') ? '***configured***' : null
+      anthropicApiKey: getUserSetting(req.user.id, 'anthropic_api_key') ? '***configured***' : null,
+      githubToken: getUserSetting(req.user.id, 'github_token') ? '***configured***' : null
     };
     res.json(settings);
   } catch (err) {
@@ -22,10 +22,10 @@ router.post('/', (req, res) => {
     const { anthropicApiKey, githubToken } = req.body;
 
     if (anthropicApiKey !== undefined) {
-      setSetting('anthropic_api_key', anthropicApiKey);
+      setUserSetting(req.user.id, 'anthropic_api_key', anthropicApiKey);
     }
     if (githubToken !== undefined) {
-      setSetting('github_token', githubToken);
+      setUserSetting(req.user.id, 'github_token', githubToken);
     }
 
     res.json({ success: true });

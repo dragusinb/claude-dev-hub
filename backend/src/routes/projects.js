@@ -16,7 +16,7 @@ if (!fs.existsSync(PROJECTS_DIR)) {
 // List all projects
 router.get('/', (req, res) => {
   try {
-    const projects = getProjects();
+    const projects = getProjects(req.user.id);
     res.json(projects);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -26,7 +26,7 @@ router.get('/', (req, res) => {
 // Get single project
 router.get('/:id', (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -56,6 +56,7 @@ router.post('/', async (req, res) => {
     // Save to database
     createProject({
       id,
+      userId: req.user.id,
       name,
       gitUrl,
       localPath,
@@ -63,7 +64,7 @@ router.post('/', async (req, res) => {
       targetServerId: targetServerId || null
     });
 
-    const project = getProject(id);
+    const project = getProject(id, req.user.id);
     res.status(201).json(project);
   } catch (err) {
     console.error('Error creating project:', err);
@@ -74,7 +75,7 @@ router.post('/', async (req, res) => {
 // Update project
 router.patch('/:id', (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -87,8 +88,8 @@ router.patch('/:id', (req, res) => {
       }
     }
 
-    updateProject(req.params.id, updates);
-    res.json(getProject(req.params.id));
+    updateProject(req.params.id, req.user.id, updates);
+    res.json(getProject(req.params.id, req.user.id));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -97,7 +98,7 @@ router.patch('/:id', (req, res) => {
 // Delete project
 router.delete('/:id', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -107,7 +108,7 @@ router.delete('/:id', async (req, res) => {
       fs.rmSync(project.local_path, { recursive: true, force: true });
     }
 
-    deleteProject(req.params.id);
+    deleteProject(req.params.id, req.user.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -117,7 +118,7 @@ router.delete('/:id', async (req, res) => {
 // Git operations
 router.post('/:id/git/pull', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -132,7 +133,7 @@ router.post('/:id/git/pull', async (req, res) => {
 
 router.get('/:id/git/status', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -147,7 +148,7 @@ router.get('/:id/git/status', async (req, res) => {
 
 router.post('/:id/git/push', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -163,7 +164,7 @@ router.post('/:id/git/push', async (req, res) => {
 // List files in project
 router.get('/:id/files', (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -195,7 +196,7 @@ router.get('/:id/files', (req, res) => {
 // Read file content
 router.get('/:id/files/content', (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -226,7 +227,7 @@ router.get('/:id/files/content', (req, res) => {
 // Save file content
 router.put('/:id/files/content', (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -253,7 +254,7 @@ router.put('/:id/files/content', (req, res) => {
 // Git commit
 router.post('/:id/git/commit', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -282,7 +283,7 @@ router.post('/:id/git/commit', async (req, res) => {
 // Git log
 router.get('/:id/git/log', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -299,7 +300,7 @@ router.get('/:id/git/log', async (req, res) => {
 // Git branches
 router.get('/:id/git/branches', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -315,7 +316,7 @@ router.get('/:id/git/branches', async (req, res) => {
 // Git checkout branch
 router.post('/:id/git/checkout', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -336,7 +337,7 @@ router.post('/:id/git/checkout', async (req, res) => {
 // Git diff
 router.get('/:id/git/diff', async (req, res) => {
   try {
-    const project = getProject(req.params.id);
+    const project = getProject(req.params.id, req.user.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }

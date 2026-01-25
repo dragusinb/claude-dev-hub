@@ -11,6 +11,7 @@ import serverRoutes from './routes/servers.js';
 import settingsRoutes from './routes/settings.js';
 import authRoutes, { authenticateToken } from './routes/auth.js';
 import githubRoutes from './routes/github.js';
+import svnRoutes from './routes/svn.js';
 import { initDatabase, getUserByEmail } from './models/database.js';
 import { handleWebSocket } from './services/claudeSession.js';
 import bcrypt from 'bcryptjs';
@@ -44,6 +45,7 @@ app.use('/api/projects', authenticateToken, projectRoutes);
 app.use('/api/servers', authenticateToken, serverRoutes);
 app.use('/api/settings', authenticateToken, settingsRoutes);
 app.use('/api/github', authenticateToken, githubRoutes);
+app.use('/api/svn', authenticateToken, svnRoutes);
 
 // WebSocket for Claude sessions
 wss.on('connection', (ws, req) => {
