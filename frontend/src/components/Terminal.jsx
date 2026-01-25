@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { Clipboard, Copy } from 'lucide-react';
+import { getToken } from '../services/auth';
 import '@xterm/xterm/css/xterm.css';
 
 function Terminal({ projectId }) {
@@ -111,7 +112,8 @@ function Terminal({ projectId }) {
 
     // Connect WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?projectId=${projectId}`;
+    const token = getToken();
+    const wsUrl = `${protocol}//${window.location.host}/ws?projectId=${projectId}&token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

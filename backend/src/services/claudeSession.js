@@ -1,7 +1,10 @@
 import * as pty from 'node-pty';
+import jwt from 'jsonwebtoken';
 import { getProject } from '../models/database.js';
 import { addChatMessage } from '../models/database.js';
 import { URL } from 'url';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'claude-dev-hub-secret-key-change-in-production';
 
 // Store active sessions
 const sessions = new Map();
@@ -9,6 +12,7 @@ const sessions = new Map();
 export function handleWebSocket(ws, req) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const projectId = url.searchParams.get('projectId');
+  const token = url.searchParams.get('token');
 
   if (!projectId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Project ID required' }));
@@ -16,7 +20,21 @@ export function handleWebSocket(ws, req) {
     return;
   }
 
-  const project = getProject(projectId);
+  // Verify JWT token
+  let userId;
+  try {
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    userId = decoded.id;
+  } catch (err) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
+    ws.close();
+    return;
+  }
+
+  const project = getProject(projectId, userId);
   if (!project) {
     ws.send(JSON.stringify({ type: 'error', message: 'Project not found' }));
     ws.close();
