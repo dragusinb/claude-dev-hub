@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
 import { simpleGit } from 'simple-git';
-import { createProject, getProjects, getProject, updateProject, deleteProject } from '../models/database.js';
+import { createProject, getProjects, getProject, updateProject, deleteProject, getUserSetting } from '../models/database.js';
 
 const router = express.Router();
 const PROJECTS_DIR = process.env.PROJECTS_DIR || path.join(process.cwd(), 'projects');
@@ -48,12 +48,22 @@ router.post('/', async (req, res) => {
     const id = uuidv4();
     const localPath = path.join(PROJECTS_DIR, id);
 
+    // Get user's GitHub token for authentication
+    const githubToken = getUserSetting(req.user.id, 'github_token');
+
+    // Build clone URL with authentication if token available
+    let cloneUrl = gitUrl;
+    if (githubToken && gitUrl.includes('github.com')) {
+      // Convert https://github.com/user/repo.git to https://token@github.com/user/repo.git
+      cloneUrl = gitUrl.replace('https://github.com/', `https://${githubToken}@github.com/`);
+    }
+
     // Clone the repository
     console.log(`Cloning ${gitUrl} to ${localPath}`);
     const git = simpleGit();
-    await git.clone(gitUrl, localPath);
+    await git.clone(cloneUrl, localPath);
 
-    // Save to database
+    // Save to database (store original URL, not the one with token)
     createProject({
       id,
       userId: req.user.id,
