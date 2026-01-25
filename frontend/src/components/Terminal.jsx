@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { Clipboard, Copy } from 'lucide-react';
 import { getToken } from '../services/auth';
 import '@xterm/xterm/css/xterm.css';
@@ -18,11 +17,34 @@ function Terminal({ projectId }) {
   // Copy selected text from terminal
   const handleCopy = async () => {
     const xterm = xtermRef.current;
-    if (xterm && xterm.hasSelection()) {
-      const text = xterm.getSelection();
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+    if (!xterm) return;
+
+    try {
+      let text = '';
+      if (xterm.hasSelection()) {
+        text = xterm.getSelection();
+      } else {
+        // If no selection, try to get the last few lines as a fallback
+        const buffer = xterm.buffer.active;
+        const lines = [];
+        for (let i = Math.max(0, buffer.cursorY - 10); i <= buffer.cursorY; i++) {
+          const line = buffer.getLine(i);
+          if (line) {
+            lines.push(line.translateToString(true));
+          }
+        }
+        text = lines.join('\n').trim();
+      }
+
+      if (text) {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    } catch (err) {
+      console.error('Copy failed:', err);
+      // Fallback for browsers that don't support clipboard API
+      alert('Copy failed. Please select text and use Ctrl+C');
     }
   };
 
@@ -76,11 +98,9 @@ function Terminal({ projectId }) {
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
-    const clipboardAddon = new ClipboardAddon();
 
     xterm.loadAddon(fitAddon);
     xterm.loadAddon(webLinksAddon);
-    xterm.loadAddon(clipboardAddon);
     xterm.open(terminalRef.current);
 
     // Handle Ctrl+Shift+V for paste
