@@ -9,6 +9,7 @@ function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('manual'); // 'manual' or 'github'
   const [creating, setCreating] = useState(false);
+  const [addingRepoId, setAddingRepoId] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     gitUrl: '',
@@ -83,19 +84,18 @@ function Dashboard() {
   }
 
   async function addFromGitHub(repo) {
-    setCreating(true);
+    setAddingRepoId(repo.id);
     try {
       await createProject({
         name: repo.name,
         gitUrl: repo.url,
         description: repo.description || ''
       });
-      setShowModal(false);
       await loadProjects();
     } catch (err) {
       alert('Failed to add project: ' + err.message);
     } finally {
-      setCreating(false);
+      setAddingRepoId(null);
     }
   }
 
@@ -307,14 +307,16 @@ function Dashboard() {
                             </div>
                             <button
                               onClick={() => addFromGitHub(repo)}
-                              disabled={creating || isAdded}
+                              disabled={addingRepoId !== null || isAdded}
                               className={`ml-4 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                                 isAdded
                                   ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                  : addingRepoId === repo.id
+                                  ? 'bg-orange-700 text-white'
                                   : 'bg-orange-600 hover:bg-orange-700 text-white'
                               }`}
                             >
-                              {isAdded ? 'Added' : creating ? 'Adding...' : 'Add'}
+                              {isAdded ? 'Added' : addingRepoId === repo.id ? 'Adding...' : 'Add'}
                             </button>
                           </div>
                         </div>
