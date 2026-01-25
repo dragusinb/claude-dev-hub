@@ -223,4 +223,130 @@ router.get('/:id/files/content', (req, res) => {
   }
 });
 
+// Save file content
+router.put('/:id/files/content', (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { path: filePath, content } = req.body;
+    if (!filePath || content === undefined) {
+      return res.status(400).json({ error: 'File path and content required' });
+    }
+
+    const fullPath = path.join(project.local_path, filePath);
+
+    // Security check
+    if (!fullPath.startsWith(project.local_path)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    fs.writeFileSync(fullPath, content, 'utf-8');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Git commit
+router.post('/:id/git/commit', async (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { message, files } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'Commit message required' });
+    }
+
+    const git = simpleGit(project.local_path);
+
+    // Stage files
+    if (files && files.length > 0) {
+      await git.add(files);
+    } else {
+      await git.add('.');
+    }
+
+    const result = await git.commit(message);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Git log
+router.get('/:id/git/log', async (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const limit = parseInt(req.query.limit) || 20;
+    const git = simpleGit(project.local_path);
+    const log = await git.log({ maxCount: limit });
+    res.json(log.all);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Git branches
+router.get('/:id/git/branches', async (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const git = simpleGit(project.local_path);
+    const branches = await git.branch();
+    res.json(branches);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Git checkout branch
+router.post('/:id/git/checkout', async (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const { branch } = req.body;
+    if (!branch) {
+      return res.status(400).json({ error: 'Branch name required' });
+    }
+
+    const git = simpleGit(project.local_path);
+    await git.checkout(branch);
+    res.json({ success: true, branch });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Git diff
+router.get('/:id/git/diff', async (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const git = simpleGit(project.local_path);
+    const diff = await git.diff();
+    res.json({ diff });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

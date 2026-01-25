@@ -134,3 +134,51 @@ export function updateSettings(data) {
 export function getClaudeStatus() {
   return request('/settings/claude-status');
 }
+
+// GitHub
+export function getGitHubStatus() {
+  return request('/github/status');
+}
+
+export function getGitHubRepos() {
+  return request('/github/repos');
+}
+
+export function getRepoBranches(owner, repo) {
+  return request(`/github/repos/${owner}/${repo}/branches`);
+}
+
+// Additional Git operations
+export function gitCommit(projectId, message, files = null) {
+  return request(`/projects/${projectId}/git/commit`, {
+    method: 'POST',
+    body: JSON.stringify({ message, files })
+  });
+}
+
+export function gitLog(projectId, limit = 20) {
+  return request(`/projects/${projectId}/git/log?limit=${limit}`);
+}
+
+export function gitBranches(projectId) {
+  return request(`/projects/${projectId}/git/branches`);
+}
+
+export function gitCheckout(projectId, branch) {
+  return request(`/projects/${projectId}/git/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({ branch })
+  });
+}
+
+export function gitDiff(projectId) {
+  return request(`/projects/${projectId}/git/diff`);
+}
+
+// File editing
+export function saveFileContent(projectId, filePath, content) {
+  return request(`/projects/${projectId}/files/content`, {
+    method: 'PUT',
+    body: JSON.stringify({ path: filePath, content })
+  });
+}
