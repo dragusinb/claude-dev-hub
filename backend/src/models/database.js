@@ -58,6 +58,14 @@ export function initDatabase() {
           timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (project_id) REFERENCES projects(id)
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          name TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
       `);
 
       console.log('Database initialized at:', DB_PATH);
@@ -148,4 +156,22 @@ export function getChatHistory(projectId, limit = 100) {
 
 export function clearChatHistory(projectId) {
   return getDb().prepare('DELETE FROM chat_history WHERE project_id = ?').run(projectId);
+}
+
+// User operations
+export function createUser(user) {
+  const stmt = getDb().prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)');
+  return stmt.run(user.id, user.email, user.passwordHash, user.name);
+}
+
+export function getUserByEmail(email) {
+  return getDb().prepare('SELECT * FROM users WHERE email = ?').get(email);
+}
+
+export function getUserById(id) {
+  return getDb().prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(id);
+}
+
+export function getUsers() {
+  return getDb().prepare('SELECT id, email, name, created_at FROM users').all();
 }

@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { FolderGit2, Server, Settings, Home } from 'lucide-react';
+import { FolderGit2, Server, Settings, Home, LogOut } from 'lucide-react';
+import { logout, getUser } from '../services/auth';
 
 function Layout() {
   const location = useLocation();
@@ -41,8 +42,20 @@ function Layout() {
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-slate-700 text-xs text-slate-500">
-          Claude Dev Hub v1.0.0
+        <div className="p-4 border-t border-slate-700">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-400">
+              {getUser()?.email?.split('@')[0] || 'User'}
+            </div>
+            <button
+              onClick={logout}
+              className="text-slate-500 hover:text-red-400 transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="text-xs text-slate-600 mt-1">v1.0.0</div>
         </div>
       </aside>
 
