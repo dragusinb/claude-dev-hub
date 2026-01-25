@@ -139,6 +139,20 @@ function runMigrations() {
     console.log('Running migration: Adding user_id to servers table');
     db.exec(`ALTER TABLE servers ADD COLUMN user_id TEXT`);
   }
+
+  // Assign orphaned projects and servers to the first user
+  const firstUser = db.prepare('SELECT id FROM users LIMIT 1').get();
+  if (firstUser) {
+    const orphanedProjects = db.prepare("UPDATE projects SET user_id = ? WHERE user_id IS NULL OR user_id = ''").run(firstUser.id);
+    if (orphanedProjects.changes > 0) {
+      console.log(`Assigned ${orphanedProjects.changes} orphaned projects to user ${firstUser.id}`);
+    }
+
+    const orphanedServers = db.prepare("UPDATE servers SET user_id = ? WHERE user_id IS NULL OR user_id = ''").run(firstUser.id);
+    if (orphanedServers.changes > 0) {
+      console.log(`Assigned ${orphanedServers.changes} orphaned servers to user ${firstUser.id}`);
+    }
+  }
 }
 
 export function getDb() {
