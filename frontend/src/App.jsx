@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard';
 import Project from './pages/Project';
 import Servers from './pages/Servers';
 import Settings from './pages/Settings';
+import Monitoring from './pages/Monitoring';
+import Vault from './pages/Vault';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { isAuthenticated, checkAuth } from './services/auth';
@@ -55,6 +57,8 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="project/:id" element={<Project />} />
         <Route path="servers" element={<Servers />} />
+        <Route path="monitoring" element={<Monitoring />} />
+        <Route path="vault" element={<Vault />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

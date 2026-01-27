@@ -100,6 +100,13 @@ export function createServer(data) {
   });
 }
 
+export function updateServer(id, data) {
+  return request(`/servers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  });
+}
+
 export function deleteServer(id) {
   return request(`/servers/${id}`, {
     method: 'DELETE'
@@ -220,5 +227,86 @@ export function checkoutSvn(data) {
   return request('/svn/checkout', {
     method: 'POST',
     body: JSON.stringify(data)
+  });
+}
+
+// Server monitoring
+export function getServerHealth(id) {
+  return request(`/servers/${id}/health`);
+}
+
+export function getServerHealthHistory(id, hours = 24) {
+  return request(`/servers/${id}/health/history?hours=${hours}`);
+}
+
+// Activity log
+export function getActivityLog(limit = 50) {
+  return request(`/activity?limit=${limit}`);
+}
+
+// Deploy history
+export function getDeployHistory(limit = 50) {
+  return request(`/deploy-history?limit=${limit}`);
+}
+
+// Alert settings
+export function getAlertSettings() {
+  return request('/alerts/settings');
+}
+
+export function updateAlertSettings(settings) {
+  return request('/alerts/settings', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  });
+}
+
+export function getAlertHistory(limit = 50) {
+  return request(`/alerts/history?limit=${limit}`);
+}
+
+export function sendTestEmail(email) {
+  return request('/alerts/test-email', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+}
+
+// Vault operations
+export function getVaultStatus() {
+  return request('/vault/status');
+}
+
+export function getVaultEntries() {
+  return request('/vault');
+}
+
+export function getVaultEntry(id) {
+  return request(`/vault/${id}`);
+}
+
+export function createVaultEntry(data) {
+  return request('/vault', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export function updateVaultEntry(id, data) {
+  return request(`/vault/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  });
+}
+
+export function deleteVaultEntry(id) {
+  return request(`/vault/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function syncVaultCredentials() {
+  return request('/vault/sync', {
+    method: 'POST'
   });
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { FolderGit2, Server, Settings, Home, LogOut, Menu, X } from 'lucide-react';
+import { FolderGit2, Server, Settings, Home, LogOut, Menu, X, Activity, Shield } from 'lucide-react';
 import { logout, getUser } from '../services/auth';
 
 function Layout() {
@@ -10,6 +10,8 @@ function Layout() {
   const navItems = [
     { path: '/', icon: Home, label: 'Projects' },
     { path: '/servers', icon: Server, label: 'Servers' },
+    { path: '/monitoring', icon: Activity, label: 'Monitoring' },
+    { path: '/vault', icon: Shield, label: 'Vault' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 

@@ -12,8 +12,11 @@ import settingsRoutes from './routes/settings.js';
 import authRoutes, { authenticateToken } from './routes/auth.js';
 import githubRoutes from './routes/github.js';
 import svnRoutes from './routes/svn.js';
+import monitoringRoutes from './routes/monitoring.js';
+import vaultRoutes from './routes/vault.js';
 import { initDatabase, getUserByEmail } from './models/database.js';
 import { handleWebSocket } from './services/claudeSession.js';
+import { startHealthCollector } from './services/healthCollector.js';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { createUser } from './models/database.js';
@@ -46,6 +49,8 @@ app.use('/api/servers', authenticateToken, serverRoutes);
 app.use('/api/settings', authenticateToken, settingsRoutes);
 app.use('/api/github', authenticateToken, githubRoutes);
 app.use('/api/svn', authenticateToken, svnRoutes);
+app.use('/api/vault', authenticateToken, vaultRoutes);
+app.use('/api', authenticateToken, monitoringRoutes);
 
 // WebSocket for Claude sessions
 wss.on('connection', (ws, req) => {
@@ -81,6 +86,10 @@ async function createInitialUser() {
 
 initDatabase().then(async () => {
   await createInitialUser();
+
+  // Start health collector (every 5 minutes)
+  startHealthCollector(5);
+
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`WebSocket available at ws://localhost:${PORT}/ws`);

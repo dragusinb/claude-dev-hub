@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Server, Trash2, Check, X, Loader2 } from 'lucide-react';
-import { getServers, createServer, deleteServer, testServer } from '../services/api';
+import { Plus, Server, Trash2, Check, X, Loader2, Edit } from 'lucide-react';
+import { getServers, createServer, deleteServer, testServer, updateServer } from '../services/api';
 
 function Servers() {
   const [servers, setServers] = useState([]);
@@ -9,6 +9,7 @@ function Servers() {
   const [creating, setCreating] = useState(false);
   const [testing, setTesting] = useState({});
   const [testResults, setTestResults] = useState({});
+  const [editingServer, setEditingServer] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     host: '',
@@ -19,6 +20,17 @@ function Servers() {
     privateKey: '',
     deployPath: '/home'
   });
+
+  const defaultFormData = {
+    name: '',
+    host: '',
+    port: 22,
+    username: 'root',
+    authType: 'password',
+    password: '',
+    privateKey: '',
+    deployPath: '/home'
+  };
 
   useEffect(() => {
     loadServers();
@@ -36,28 +48,45 @@ function Servers() {
     }
   }
 
-  async function handleCreate(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setCreating(true);
     try {
-      await createServer(formData);
+      if (editingServer) {
+        await updateServer(editingServer.id, formData);
+      } else {
+        await createServer(formData);
+      }
       setShowModal(false);
-      setFormData({
-        name: '',
-        host: '',
-        port: 22,
-        username: 'root',
-        authType: 'password',
-        password: '',
-        privateKey: '',
-        deployPath: '/home'
-      });
+      setEditingServer(null);
+      setFormData(defaultFormData);
       await loadServers();
     } catch (err) {
-      alert('Failed to add server: ' + err.message);
+      alert(`Failed to ${editingServer ? 'update' : 'add'} server: ` + err.message);
     } finally {
       setCreating(false);
     }
+  }
+
+  function handleEdit(server) {
+    setEditingServer(server);
+    setFormData({
+      name: server.name,
+      host: server.host,
+      port: server.port,
+      username: server.username,
+      authType: server.auth_type || 'password',
+      password: '',
+      privateKey: '',
+      deployPath: server.deploy_path || '/home'
+    });
+    setShowModal(true);
+  }
+
+  function handleCloseModal() {
+    setShowModal(false);
+    setEditingServer(null);
+    setFormData(defaultFormData);
   }
 
   async function handleDelete(id, name) {
@@ -88,7 +117,11 @@ function Servers() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Deployment Servers</h1>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setEditingServer(null);
+            setFormData(defaultFormData);
+            setShowModal(true);
+          }}
           className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -148,6 +181,13 @@ function Servers() {
                     )}
                   </button>
                   <button
+                    onClick={() => handleEdit(server)}
+                    className="text-slate-500 hover:text-orange-500 transition-colors"
+                    title="Edit server"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => handleDelete(server.id, server.name)}
                     className="text-slate-500 hover:text-red-500 transition-colors"
                   >
@@ -160,12 +200,17 @@ function Servers() {
         </div>
       )}
 
-      {/* Add Server Modal */}
+      {/* Add/Edit Server Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md border border-slate-700 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Add Server</h2>
-            <form onSubmit={handleCreate}>
+            <h2 className="text-xl font-bold mb-4">{editingServer ? 'Edit Server' : 'Add Server'}</h2>
+            {editingServer && (
+              <p className="text-sm text-yellow-500 mb-4">
+                Leave password/key blank to keep existing credentials
+              </p>
+            )}
+            <form onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Name</label>
@@ -257,7 +302,7 @@ function Servers() {
               <div className="flex justify-end gap-2 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={handleCloseModal}
                   className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
                 >
                   Cancel
@@ -267,7 +312,7 @@ function Servers() {
                   disabled={creating}
                   className="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50"
                 >
-                  {creating ? 'Adding...' : 'Add Server'}
+                  {creating ? (editingServer ? 'Updating...' : 'Adding...') : (editingServer ? 'Update Server' : 'Add Server')}
                 </button>
               </div>
             </form>
