@@ -15,6 +15,8 @@ This is a persistent task list for tracking ongoing work and improvements.
 - [x] Fix SMTP sender address issue
 - [x] Fix credential decryption logging (silent skip)
 - [x] Fix DATA_DIR/VAULT_KEY lazy loading (bootstrap.js)
+- [x] Prevent duplicate SSL domains (409 Conflict on duplicate domain:port)
+- [x] SSL domain discovery - Scan servers for nginx/apache/letsencrypt domains
 
 ## In Progress
 
