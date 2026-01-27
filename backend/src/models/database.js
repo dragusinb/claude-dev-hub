@@ -307,7 +307,7 @@ export function initDatabase() {
       // Run migrations for existing databases
       runMigrations();
 
-      console.log('Database initialized at:', DB_PATH);
+      console.log('Database initialized at:', dbPath);
       resolve(db);
     } catch (err) {
       reject(err);
