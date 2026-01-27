@@ -365,6 +365,10 @@ export function checkSSLCertificate(id) {
   });
 }
 
+export function discoverSSLDomains() {
+  return request('/ssl/discover');
+}
+
 // ==================== BACKUP SCHEDULER ====================
 
 export function getBackupJobs() {

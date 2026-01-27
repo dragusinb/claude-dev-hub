@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, Plus, RefreshCw, Trash2, Edit, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Lock, Plus, RefreshCw, Trash2, Edit, AlertTriangle, CheckCircle, XCircle, Search, Server } from 'lucide-react';
 import * as api from '../services/api';
 
 function SSLMonitor() {
@@ -8,6 +8,10 @@ function SSLMonitor() {
   const [showModal, setShowModal] = useState(false);
   const [editingCert, setEditingCert] = useState(null);
   const [checking, setChecking] = useState(null);
+  const [showDiscoverModal, setShowDiscoverModal] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverResults, setDiscoverResults] = useState(null);
+  const [addingDomain, setAddingDomain] = useState(null);
 
   const [formData, setFormData] = useState({
     domain: '',
@@ -125,6 +129,37 @@ function SSLMonitor() {
     );
   }
 
+  async function handleDiscover() {
+    try {
+      setDiscovering(true);
+      setShowDiscoverModal(true);
+      const results = await api.discoverSSLDomains();
+      setDiscoverResults(results);
+    } catch (err) {
+      alert('Failed to discover domains: ' + err.message);
+      setShowDiscoverModal(false);
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  async function handleAddDiscovered(domain) {
+    try {
+      setAddingDomain(domain);
+      await api.createSSLCertificate({ domain, port: 443, alertDays: 30, enabled: true });
+      // Remove from suggestions
+      setDiscoverResults(prev => ({
+        ...prev,
+        suggestions: prev.suggestions.filter(s => s.domain !== domain)
+      }));
+      loadCertificates();
+    } catch (err) {
+      alert('Failed to add domain: ' + err.message);
+    } finally {
+      setAddingDomain(null);
+    }
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -142,6 +177,14 @@ function SSLMonitor() {
             className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={handleDiscover}
+            disabled={discovering}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Search className={`w-4 h-4 ${discovering ? 'animate-pulse' : ''}`} />
+            Discover
           </button>
           <button
             onClick={() => { resetForm(); setEditingCert(null); setShowModal(true); }}
@@ -321,6 +364,99 @@ function SSLMonitor() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Discover Modal */}
+      {showDiscoverModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Discover Domains</h2>
+              <button
+                onClick={() => setShowDiscoverModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            {discovering ? (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 mx-auto mb-4 animate-pulse text-orange-500" />
+                <p className="text-slate-400">Scanning servers for domains...</p>
+                <p className="text-sm text-slate-500 mt-2">Checking nginx, apache, and Let's Encrypt configs</p>
+              </div>
+            ) : discoverResults ? (
+              <div className="overflow-y-auto flex-1">
+                {/* Server scan results */}
+                <div className="mb-4 p-3 bg-slate-900 rounded-lg">
+                  <div className="text-sm text-slate-400 mb-2">Scanned Servers:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {discoverResults.serverResults.map(s => (
+                      <span
+                        key={s.serverId}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                          s.error ? 'bg-red-900/50 text-red-400' : 'bg-green-900/50 text-green-400'
+                        }`}
+                        title={s.error || `Found ${s.domainsFound} domains`}
+                      >
+                        <Server className="w-3 h-3" />
+                        {s.serverName}
+                        {!s.error && <span className="opacity-75">({s.domainsFound})</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Suggestions */}
+                {discoverResults.suggestions.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <CheckCircle className="w-12 h-12 mx-auto mb-4 text-green-500" />
+                    <p>All discovered domains are already being monitored!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-sm text-slate-400 mb-2">
+                      Found {discoverResults.suggestions.length} new domains:
+                    </div>
+                    {discoverResults.suggestions.map(s => (
+                      <div
+                        key={s.domain}
+                        className="flex items-center justify-between p-3 bg-slate-900 rounded-lg"
+                      >
+                        <div>
+                          <div className="font-medium">{s.domain}</div>
+                          <div className="text-xs text-slate-500">from {s.serverName}</div>
+                        </div>
+                        <button
+                          onClick={() => handleAddDiscovered(s.domain)}
+                          disabled={addingDomain === s.domain}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded text-sm transition-colors disabled:opacity-50"
+                        >
+                          {addingDomain === s.domain ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4" />
+                          )}
+                          Add
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end pt-4 border-t border-slate-700 mt-4">
+              <button
+                onClick={() => setShowDiscoverModal(false)}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

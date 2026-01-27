@@ -1,14 +1,113 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { Client } from 'ssh2';
 import {
   createSSLCertificate,
   getSSLCertificates,
   getSSLCertificate,
   getSSLCertificateByDomain,
   updateSSLCertificate,
-  deleteSSLCertificate
+  deleteSSLCertificate,
+  getServers
 } from '../models/database.js';
 import { checkSingleSSLCertificate } from '../services/sslCollector.js';
+
+// Discover domains from a server via SSH
+function discoverDomainsFromServer(server) {
+  return new Promise((resolve) => {
+    const conn = new Client();
+    const timeout = setTimeout(() => {
+      conn.end();
+      resolve({ serverId: server.id, serverName: server.name, domains: [], error: 'Connection timeout' });
+    }, 30000);
+
+    conn.on('ready', () => {
+      // Check nginx, apache, and letsencrypt for domains
+      const command = `
+        echo "===NGINX==="
+        grep -rh "server_name" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | grep -v "^#" | sed 's/server_name//g' | tr ';' '\\n' | tr ' ' '\\n' | grep -v "^$" | grep "\\." | sort -u
+        echo "===APACHE==="
+        grep -rh "ServerName\\|ServerAlias" /etc/apache2/sites-enabled/ /etc/httpd/conf.d/ 2>/dev/null | grep -v "^#" | sed 's/ServerName//g; s/ServerAlias//g' | tr ' ' '\\n' | grep -v "^$" | grep "\\." | sort -u
+        echo "===LETSENCRYPT==="
+        ls /etc/letsencrypt/live/ 2>/dev/null | grep -v "README"
+      `;
+
+      conn.exec(command, (err, stream) => {
+        if (err) {
+          clearTimeout(timeout);
+          conn.end();
+          resolve({ serverId: server.id, serverName: server.name, domains: [], error: err.message });
+          return;
+        }
+
+        let output = '';
+        stream.on('data', (data) => { output += data.toString(); });
+        stream.stderr.on('data', () => {}); // Ignore stderr
+        stream.on('close', () => {
+          clearTimeout(timeout);
+          conn.end();
+
+          const domains = new Set();
+          const sections = output.split('===');
+
+          for (let i = 0; i < sections.length; i++) {
+            const section = sections[i].trim();
+            const data = sections[i + 1]?.trim() || '';
+
+            if (['NGINX', 'APACHE', 'LETSENCRYPT'].includes(section)) {
+              const lines = data.split('\n').filter(l => l.trim());
+              for (const line of lines) {
+                const domain = line.trim().toLowerCase();
+                // Filter out invalid entries
+                if (domain &&
+                    domain.includes('.') &&
+                    !domain.startsWith('_') &&
+                    !domain.includes('*') &&
+                    !domain.includes('$') &&
+                    domain !== 'localhost' &&
+                    !domain.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+                  domains.add(domain);
+                }
+              }
+            }
+          }
+
+          resolve({
+            serverId: server.id,
+            serverName: server.name,
+            domains: Array.from(domains).sort()
+          });
+        });
+      });
+    });
+
+    conn.on('error', (err) => {
+      clearTimeout(timeout);
+      resolve({ serverId: server.id, serverName: server.name, domains: [], error: err.message });
+    });
+
+    const config = {
+      host: server.host,
+      port: server.port,
+      username: server.username
+    };
+
+    if (server.auth_type === 'password') {
+      config.password = server.password;
+    } else {
+      config.privateKey = server.private_key;
+    }
+
+    // Skip if no credentials
+    const hasCredentials = server.auth_type === 'password' ? !!server.password : !!server.private_key;
+    if (!hasCredentials) {
+      resolve({ serverId: server.id, serverName: server.name, domains: [], error: 'No credentials' });
+      return;
+    }
+
+    conn.connect(config);
+  });
+}
 
 const router = express.Router();
 
@@ -81,6 +180,55 @@ router.post('/', async (req, res) => {
     res.status(201).json(created);
   } catch (err) {
     console.error('Error creating SSL certificate:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/ssl/discover - Discover domains from all servers
+// NOTE: This route must be defined BEFORE /:id routes
+router.get('/discover', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const servers = getServers(userId);
+    const existingCerts = getSSLCertificates(userId);
+    const existingDomains = new Set(existingCerts.map(c => c.domain.toLowerCase()));
+
+    // Discover domains from all servers in parallel
+    const results = await Promise.all(servers.map(s => discoverDomainsFromServer(s)));
+
+    // Aggregate and filter out already-monitored domains
+    const suggestions = [];
+    for (const result of results) {
+      for (const domain of result.domains) {
+        if (!existingDomains.has(domain.toLowerCase())) {
+          suggestions.push({
+            domain,
+            serverId: result.serverId,
+            serverName: result.serverName
+          });
+        }
+      }
+    }
+
+    // Deduplicate by domain (keep first occurrence)
+    const seen = new Set();
+    const uniqueSuggestions = suggestions.filter(s => {
+      if (seen.has(s.domain)) return false;
+      seen.add(s.domain);
+      return true;
+    });
+
+    res.json({
+      suggestions: uniqueSuggestions,
+      serverResults: results.map(r => ({
+        serverId: r.serverId,
+        serverName: r.serverName,
+        domainsFound: r.domains.length,
+        error: r.error || null
+      }))
+    });
+  } catch (err) {
+    console.error('Error discovering domains:', err);
     res.status(500).json({ error: err.message });
   }
 });
