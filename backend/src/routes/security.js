@@ -57,13 +57,25 @@ function getPortAction(port, actionType = 'block') {
   const portName = PORT_NAMES[port] || `Port ${port}`;
   const isDbPort = DATABASE_PORTS.includes(port);
 
+  if (actionType === 'undo' || actionType === 'allow') {
+    return {
+      id: `allow_port_${port}`,
+      name: `Allow ${portName}`,
+      description: `Remove firewall restrictions and allow ${portName} (port ${port}) from anywhere.`,
+      command: `ufw delete deny ${port} 2>/dev/null; ufw delete allow from 127.0.0.1 to any port ${port} 2>/dev/null; ufw allow ${port} && ufw reload`,
+      category: 'ports',
+      isUndo: true
+    };
+  }
+
   if (actionType === 'localhost' || (actionType === 'block' && isDbPort)) {
     return {
       id: `restrict_port_${port}_localhost`,
       name: `Restrict ${portName} to localhost`,
       description: `Allow ${portName} (port ${port}) only from localhost (127.0.0.1). Remote connections will be blocked.`,
       command: `ufw delete allow ${port} 2>/dev/null; ufw deny ${port} && ufw allow from 127.0.0.1 to any port ${port} && ufw reload`,
-      category: 'ports'
+      category: 'ports',
+      undoAction: `allow_port_${port}`
     };
   }
 
@@ -72,7 +84,8 @@ function getPortAction(port, actionType = 'block') {
     name: `Block ${portName}`,
     description: `Completely block port ${port} (${portName}) using UFW firewall`,
     command: `ufw deny ${port} && ufw reload`,
-    category: 'ports'
+    category: 'ports',
+    undoAction: `allow_port_${port}`
   };
 }
 
@@ -314,7 +327,13 @@ router.post('/action/:serverId', async (req, res) => {
 
     // Check for dynamic port actions
     let action;
-    if (actionId.startsWith('restrict_port_') && actionId.endsWith('_localhost')) {
+    if (actionId.startsWith('allow_port_')) {
+      const port = parseInt(actionId.replace('allow_port_', ''));
+      if (isNaN(port)) {
+        return res.status(400).json({ error: 'Invalid port number' });
+      }
+      action = getPortAction(port, 'undo');
+    } else if (actionId.startsWith('restrict_port_') && actionId.endsWith('_localhost')) {
       const port = parseInt(actionId.replace('restrict_port_', '').replace('_localhost', ''));
       if (isNaN(port)) {
         return res.status(400).json({ error: 'Invalid port number' });
@@ -354,9 +373,11 @@ router.post('/action/:serverId', async (req, res) => {
     res.json({
       success: result.code === 0,
       action: action.name,
+      actionId: action.id,
       exitCode: result.code,
       output: result.stdout,
-      error: result.stderr
+      error: result.stderr,
+      undoAction: action.undoAction || null
     });
   } catch (err) {
     console.error('Error executing security action:', err);

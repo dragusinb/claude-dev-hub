@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, RefreshCw, AlertTriangle, CheckCircle, XCircle, Server, ChevronDown, ChevronUp, Play, X, Terminal } from 'lucide-react';
+import { ShieldCheck, RefreshCw, AlertTriangle, CheckCircle, XCircle, Server, ChevronDown, ChevronUp, Play, X, Terminal, Undo2 } from 'lucide-react';
 import * as api from '../services/api';
 
 function Security() {
@@ -50,6 +50,25 @@ function Security() {
       }
     } catch (err) {
       setActionResult({ success: false, error: err.message });
+    } finally {
+      setActionRunning(false);
+    }
+  }
+
+  async function executeUndo(serverId, undoActionId) {
+    try {
+      setActionRunning(true);
+      const result = await api.executeSecurityAction(serverId, undoActionId);
+      setActionResult({
+        ...result,
+        isUndo: true
+      });
+      if (result.success) {
+        loadServerAudit(serverId);
+        loadData();
+      }
+    } catch (err) {
+      setActionResult({ success: false, error: err.message, isUndo: true });
     } finally {
       setActionRunning(false);
     }
@@ -492,6 +511,25 @@ function Security() {
               >
                 {actionResult ? 'Close' : 'Cancel'}
               </button>
+              {actionResult && actionResult.success && actionResult.undoAction && !actionResult.isUndo && (
+                <button
+                  onClick={() => executeUndo(actionModal.serverId, actionResult.undoAction)}
+                  disabled={actionRunning}
+                  className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {actionRunning ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Undoing...
+                    </>
+                  ) : (
+                    <>
+                      <Undo2 className="w-4 h-4" />
+                      Undo
+                    </>
+                  )}
+                </button>
+              )}
               {!actionResult && (
                 <button
                   onClick={() => executeAction(actionModal.serverId, actionModal.action.id)}
