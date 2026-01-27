@@ -17,6 +17,16 @@ This is a persistent task list for tracking ongoing work and improvements.
 - [x] Fix DATA_DIR/VAULT_KEY lazy loading (bootstrap.js)
 - [x] Prevent duplicate SSL domains (409 Conflict on duplicate domain:port)
 - [x] SSL domain discovery - Scan servers for nginx/apache/letsencrypt domains
+- [x] SSL discover Add All button + visual feedback (green checkmark on added)
+- [x] Monitoring history - Show all server graphs at once (removed dropdown)
+- [x] Security scoring improvements:
+  - Score caps per category (ports: 30, firewall: 15, ssh: 25, updates: 25)
+  - Recognize mail server ports (993, 995, 465, 587) as legitimate
+  - Auto-detect mail servers and don't penalize mail ports
+  - Minimum score of 10 if firewall is active
+- [x] Disable security email alerts (log only)
+- [x] Fix SSL collector log showing "undefined days" on errors
+- [x] Add 'low' severity styling in Security page
 
 ## In Progress
 
@@ -26,14 +36,13 @@ This is a persistent task list for tracking ongoing work and improvements.
 
 ### High Priority
 - [ ] Claude session launch issue - Gets stuck after theme selection (investigate Docker mount)
-- [ ] Add "Restrict port to IP" action (allow specific IP only)
 
 ### Medium Priority
+- [ ] Add "Restrict port to IP" action (allow specific IP only)
 - [ ] Add SSH key-only authentication action
 - [ ] Add automatic backup verification
 - [ ] Add disk usage alerts
 - [ ] Add network traffic monitoring
-- [ ] Improve security score calculation (weighted categories)
 
 ### Low Priority
 - [ ] Add dark/light theme toggle for UI
