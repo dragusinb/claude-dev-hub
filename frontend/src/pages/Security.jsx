@@ -170,6 +170,7 @@ function Security() {
     switch (severity) {
       case 'high': return 'text-red-400 bg-red-900/30';
       case 'medium': return 'text-yellow-400 bg-yellow-900/30';
+      case 'low': return 'text-orange-400 bg-orange-900/30';
       case 'info': return 'text-blue-400 bg-blue-900/30';
       default: return 'text-slate-400 bg-slate-900/30';
     }

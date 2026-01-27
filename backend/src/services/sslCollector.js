@@ -95,7 +95,11 @@ async function collectAllSSLCertificates() {
           await sendSSLAlert(cert, result.daysUntilExpiry);
         }
 
-        console.log(`SSL check complete for ${cert.domain}: ${result.daysUntilExpiry} days until expiry`);
+        if (result.error) {
+          console.log(`SSL check for ${cert.domain}: error - ${result.error}`);
+        } else {
+          console.log(`SSL check complete for ${cert.domain}: ${result.daysUntilExpiry} days until expiry`);
+        }
       } catch (err) {
         console.error(`Failed to check SSL for ${cert.domain}:`, err.message);
         updateSSLCertificate(cert.id, cert.user_id, {
