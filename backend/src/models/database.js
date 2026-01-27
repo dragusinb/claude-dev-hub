@@ -8,20 +8,30 @@ import { encrypt, decrypt } from '../services/encryption.js';
 const SENSITIVE_SETTINGS = ['github_token', 'anthropic_api_key', 'claude_api_key', 'openai_api_key'];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
-const DB_PATH = path.join(DATA_DIR, 'claude-dev-hub.db');
+
+// Lazy-load paths to ensure env vars are available
+function getDataDir() {
+  return process.env.DATA_DIR || path.join(__dirname, '../../data');
+}
+
+function getDbPath() {
+  return path.join(getDataDir(), 'claude-dev-hub.db');
+}
 
 let db;
 
 export function initDatabase() {
   return new Promise((resolve, reject) => {
     try {
+      const dataDir = getDataDir();
+      const dbPath = getDbPath();
+
       // Ensure data directory exists
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
       }
 
-      db = new Database(DB_PATH);
+      db = new Database(dbPath);
 
       // Create tables
       db.exec(`
