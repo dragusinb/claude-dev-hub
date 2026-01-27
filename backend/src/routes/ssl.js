@@ -195,8 +195,12 @@ router.get('/discover', async (req, res) => {
   try {
     const userId = req.user.id;
     const servers = getServersWithCredentials(userId);
+    console.log(`[SSL Discovery] Starting discovery for user ${userId}, found ${servers.length} servers`);
+    servers.forEach(s => console.log(`[SSL Discovery] Server: ${s.name} (${s.host}) - has credentials: ${!!(s.password || s.private_key)}`));
+
     const existingCerts = getSSLCertificates(userId);
     const existingDomains = new Set(existingCerts.map(c => c.domain.toLowerCase()));
+    console.log(`[SSL Discovery] Existing monitored domains:`, Array.from(existingDomains));
 
     // Discover domains from all servers in parallel
     const results = await Promise.all(servers.map(s => discoverDomainsFromServer(s)));
@@ -222,6 +226,8 @@ router.get('/discover', async (req, res) => {
       seen.add(s.domain);
       return true;
     });
+
+    console.log(`[SSL Discovery] Total unique suggestions: ${uniqueSuggestions.length}`, uniqueSuggestions.map(s => s.domain));
 
     res.json({
       suggestions: uniqueSuggestions,
