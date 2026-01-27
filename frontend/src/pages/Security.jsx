@@ -69,12 +69,21 @@ function Security() {
           // Find matching static action or create dynamic one for ports
           let action = actions.find(a => a.id === finding.action);
 
-          if (!action && finding.action.startsWith('block_port_')) {
+          // Handle dynamic port actions
+          if (!action && finding.action.startsWith('restrict_port_') && finding.action.endsWith('_localhost')) {
+            const port = finding.action.replace('restrict_port_', '').replace('_localhost', '');
+            action = {
+              id: finding.action,
+              name: `Restrict Port ${port} to Localhost`,
+              description: `Allow port ${port} only from localhost (127.0.0.1). Remote connections will be blocked.`,
+              command: `ufw delete allow ${port} 2>/dev/null; ufw deny ${port} && ufw allow from 127.0.0.1 to any port ${port} && ufw reload`
+            };
+          } else if (!action && finding.action.startsWith('block_port_')) {
             const port = finding.action.replace('block_port_', '');
             action = {
               id: finding.action,
               name: `Block Port ${port}`,
-              description: `Block port ${port} using UFW firewall`,
+              description: `Completely block port ${port} using UFW firewall`,
               command: `ufw deny ${port} && ufw reload`
             };
           }

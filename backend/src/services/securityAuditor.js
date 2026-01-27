@@ -133,12 +133,25 @@ const PORT_DESCRIPTIONS = {
 // Analyze audit results and generate findings/recommendations
 function analyzeAudit(audit) {
   // Check open ports
-  const riskyPorts = [21, 23, 25, 110, 143, 3306, 5432, 6379, 27017];
+  const riskyPorts = [21, 23, 25, 110, 143];
+  const databasePorts = [3306, 5432, 6379, 27017];
   const commonPorts = [22, 80, 443];
 
   for (const port of audit.openPorts) {
     const portName = PORT_DESCRIPTIONS[port] || `Port ${port}`;
-    if (riskyPorts.includes(port)) {
+
+    if (databasePorts.includes(port)) {
+      // Database ports should be restricted to localhost, not blocked
+      audit.findings.push({
+        severity: 'high',
+        category: 'ports',
+        port: port,
+        message: `${portName} (${port}) is exposed to the internet - should be localhost only`,
+        action: `restrict_port_${port}_localhost`
+      });
+      audit.recommendations.push(`Restrict ${portName} (port ${port}) to localhost only`);
+      audit.score -= 15;
+    } else if (riskyPorts.includes(port)) {
       audit.findings.push({
         severity: 'high',
         category: 'ports',
@@ -146,7 +159,7 @@ function analyzeAudit(audit) {
         message: `${portName} (${port}) is open and exposed to the internet`,
         action: `block_port_${port}`
       });
-      audit.recommendations.push(`Block ${portName} (port ${port}) with firewall or restrict to specific IPs`);
+      audit.recommendations.push(`Block ${portName} (port ${port}) with firewall`);
       audit.score -= 10;
     } else if (!commonPorts.includes(port)) {
       audit.findings.push({

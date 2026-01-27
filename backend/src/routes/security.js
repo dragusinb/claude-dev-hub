@@ -49,13 +49,28 @@ const PORT_NAMES = {
   3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis', 27017: 'MongoDB'
 };
 
-// Generate dynamic port blocking action
-function getPortBlockAction(port) {
+// Database ports that should be restricted to localhost rather than blocked
+const DATABASE_PORTS = [3306, 5432, 6379, 27017];
+
+// Generate dynamic port action
+function getPortAction(port, actionType = 'block') {
   const portName = PORT_NAMES[port] || `Port ${port}`;
+  const isDbPort = DATABASE_PORTS.includes(port);
+
+  if (actionType === 'localhost' || (actionType === 'block' && isDbPort)) {
+    return {
+      id: `restrict_port_${port}_localhost`,
+      name: `Restrict ${portName} to localhost`,
+      description: `Allow ${portName} (port ${port}) only from localhost (127.0.0.1). Remote connections will be blocked.`,
+      command: `ufw delete allow ${port} 2>/dev/null; ufw deny ${port} && ufw allow from 127.0.0.1 to any port ${port} && ufw reload`,
+      category: 'ports'
+    };
+  }
+
   return {
     id: `block_port_${port}`,
     name: `Block ${portName}`,
-    description: `Block port ${port} (${portName}) using UFW firewall`,
+    description: `Completely block port ${port} (${portName}) using UFW firewall`,
     command: `ufw deny ${port} && ufw reload`,
     category: 'ports'
   };
@@ -297,14 +312,20 @@ router.post('/action/:serverId', async (req, res) => {
     const serverId = req.params.serverId;
     const { actionId } = req.body;
 
-    // Check for dynamic port blocking action
+    // Check for dynamic port actions
     let action;
-    if (actionId.startsWith('block_port_')) {
+    if (actionId.startsWith('restrict_port_') && actionId.endsWith('_localhost')) {
+      const port = parseInt(actionId.replace('restrict_port_', '').replace('_localhost', ''));
+      if (isNaN(port)) {
+        return res.status(400).json({ error: 'Invalid port number' });
+      }
+      action = getPortAction(port, 'localhost');
+    } else if (actionId.startsWith('block_port_')) {
       const port = parseInt(actionId.replace('block_port_', ''));
       if (isNaN(port)) {
         return res.status(400).json({ error: 'Invalid port number' });
       }
-      action = getPortBlockAction(port);
+      action = getPortAction(port, 'block');
     } else {
       action = SECURITY_ACTIONS[actionId];
     }
