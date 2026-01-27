@@ -4,6 +4,7 @@ import {
   createSSLCertificate,
   getSSLCertificates,
   getSSLCertificate,
+  getSSLCertificateByDomain,
   updateSSLCertificate,
   deleteSSLCertificate
 } from '../models/database.js';
@@ -35,12 +36,19 @@ router.post('/', async (req, res) => {
 
     // Clean domain (remove protocol if present)
     const cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
+    const certPort = port || 443;
+
+    // Check for duplicate domain+port combination
+    const existing = getSSLCertificateByDomain(cleanDomain, certPort, userId);
+    if (existing) {
+      return res.status(409).json({ error: `Domain ${cleanDomain}:${certPort} is already being monitored` });
+    }
 
     const cert = {
       id: uuidv4(),
       userId,
       domain: cleanDomain,
-      port: port || 443,
+      port: certPort,
       alertDays: alertDays || 30,
       enabled: enabled !== false
     };

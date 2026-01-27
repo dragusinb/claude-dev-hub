@@ -971,6 +971,11 @@ export function getSSLCertificate(id, userId) {
   return getDb().prepare('SELECT * FROM ssl_certificates WHERE id = ? AND user_id = ?').get(id, userId);
 }
 
+// Get SSL certificate by domain (for duplicate check)
+export function getSSLCertificateByDomain(domain, port, userId) {
+  return getDb().prepare('SELECT * FROM ssl_certificates WHERE domain = ? AND port = ? AND user_id = ?').get(domain, port, userId);
+}
+
 // Update SSL certificate
 export function updateSSLCertificate(id, userId, updates) {
   const allowedFields = ['domain', 'port', 'enabled', 'issuer', 'subject', 'valid_from', 'valid_to',
