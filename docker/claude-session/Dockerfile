@@ -38,6 +38,9 @@ RUN useradd -m -s /bin/bash claude && \
 # Create workspace directory
 RUN mkdir -p /workspace && chown claude:claude /workspace
 
+# Create .claude directory with proper permissions for Claude CLI
+RUN mkdir -p /home/claude/.claude && chown -R claude:claude /home/claude/.claude
+
 # Set working directory
 WORKDIR /workspace
 

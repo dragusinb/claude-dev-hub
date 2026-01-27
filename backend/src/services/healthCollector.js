@@ -1,5 +1,5 @@
 import { Client } from 'ssh2';
-import { getAllServersForMonitoring, addServerHealthHistory, cleanupOldHealthHistory } from '../models/database.js';
+import { getAllServersForMonitoring, addServerHealthHistory, cleanupOldHealthHistory, addUptimeEvent, cleanupOldUptimeEvents } from '../models/database.js';
 import { checkAndAlert, alertServerDown, alertServerUp } from './alertService.js';
 
 let collectorInterval = null;
@@ -8,6 +8,7 @@ let collectorInterval = null;
 async function collectServerHealth(server) {
   return new Promise((resolve, reject) => {
     const conn = new Client();
+    const startTime = Date.now();
     const timeout = setTimeout(() => {
       conn.end();
       reject(new Error('Connection timeout'));
@@ -74,6 +75,9 @@ async function collectServerHealth(server) {
             }
           }
 
+          // Calculate response time
+          stats.responseTime = Date.now() - startTime;
+
           resolve(stats);
         });
       });
@@ -130,9 +134,25 @@ async function collectAllServersHealth() {
         // Server is up - check if we need to send recovery alert
         await alertServerUp(server.id, server.name, server.host);
 
+        // Record uptime event
+        addUptimeEvent({
+          serverId: server.id,
+          status: 'up',
+          responseTime: stats.responseTime || null,
+          errorMessage: null
+        });
+
         console.log(`Collected health data for server: ${server.name}`);
       } catch (err) {
         console.error(`Failed to collect health from ${server.name}:`, err.message);
+
+        // Record uptime event
+        addUptimeEvent({
+          serverId: server.id,
+          status: 'down',
+          responseTime: null,
+          errorMessage: err.message
+        });
 
         // Server is down - send alert
         await alertServerDown(server.id, server.name, server.host, err.message);
@@ -141,6 +161,7 @@ async function collectAllServersHealth() {
 
     // Cleanup old data (keep 7 days)
     cleanupOldHealthHistory(7);
+    cleanupOldUptimeEvents(30); // Keep uptime events for 30 days
   } catch (err) {
     console.error('Health collection error:', err);
   }

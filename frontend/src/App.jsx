@@ -7,6 +7,10 @@ import Servers from './pages/Servers';
 import Settings from './pages/Settings';
 import Monitoring from './pages/Monitoring';
 import Vault from './pages/Vault';
+import Uptime from './pages/Uptime';
+import SSLMonitor from './pages/SSLMonitor';
+import Backups from './pages/Backups';
+import Security from './pages/Security';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { isAuthenticated, checkAuth } from './services/auth';
@@ -58,6 +62,10 @@ function App() {
         <Route path="project/:id" element={<Project />} />
         <Route path="servers" element={<Servers />} />
         <Route path="monitoring" element={<Monitoring />} />
+        <Route path="uptime" element={<Uptime />} />
+        <Route path="ssl" element={<SSLMonitor />} />
+        <Route path="backups" element={<Backups />} />
+        <Route path="security" element={<Security />} />
         <Route path="vault" element={<Vault />} />
         <Route path="settings" element={<Settings />} />
       </Route>

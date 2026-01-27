@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { FolderGit2, Server, Settings, Home, LogOut, Menu, X, Activity, Shield } from 'lucide-react';
+import { FolderGit2, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck } from 'lucide-react';
 import { logout, getUser } from '../services/auth';
 
 function Layout() {
@@ -11,6 +11,10 @@ function Layout() {
     { path: '/', icon: Home, label: 'Projects' },
     { path: '/servers', icon: Server, label: 'Servers' },
     { path: '/monitoring', icon: Activity, label: 'Monitoring' },
+    { path: '/uptime', icon: Clock, label: 'Uptime' },
+    { path: '/ssl', icon: Lock, label: 'SSL Monitor' },
+    { path: '/backups', icon: Database, label: 'Backups' },
+    { path: '/security', icon: ShieldCheck, label: 'Security' },
     { path: '/vault', icon: Shield, label: 'Vault' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];

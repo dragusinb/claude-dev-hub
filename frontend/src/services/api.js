@@ -310,3 +310,132 @@ export function syncVaultCredentials() {
     method: 'POST'
   });
 }
+
+// ==================== UPTIME ====================
+
+export function getUptimeSummary() {
+  return request('/uptime/summary');
+}
+
+export function getServerUptime(serverId, hours = 24) {
+  return request(`/uptime/server/${serverId}?hours=${hours}`);
+}
+
+export function getUptimeEvents(serverId, hours = 24) {
+  return request(`/uptime/server/${serverId}/events?hours=${hours}`);
+}
+
+export function getDailyUptimeStats(serverId, days = 30) {
+  return request(`/uptime/server/${serverId}/daily?days=${days}`);
+}
+
+// ==================== SSL CERTIFICATES ====================
+
+export function getSSLCertificates() {
+  return request('/ssl');
+}
+
+export function getSSLCertificate(id) {
+  return request(`/ssl/${id}`);
+}
+
+export function createSSLCertificate(data) {
+  return request('/ssl', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export function updateSSLCertificate(id, data) {
+  return request(`/ssl/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  });
+}
+
+export function deleteSSLCertificate(id) {
+  return request(`/ssl/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function checkSSLCertificate(id) {
+  return request(`/ssl/${id}/check`, {
+    method: 'POST'
+  });
+}
+
+// ==================== BACKUP SCHEDULER ====================
+
+export function getBackupJobs() {
+  return request('/backups/jobs');
+}
+
+export function getBackupJob(id) {
+  return request(`/backups/jobs/${id}`);
+}
+
+export function createBackupJob(data) {
+  return request('/backups/jobs', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export function updateBackupJob(id, data) {
+  return request(`/backups/jobs/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  });
+}
+
+export function deleteBackupJob(id) {
+  return request(`/backups/jobs/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function runBackupJob(id) {
+  return request(`/backups/jobs/${id}/run`, {
+    method: 'POST'
+  });
+}
+
+export function getBackupHistory(limit = 50) {
+  return request(`/backups/history?limit=${limit}`);
+}
+
+export function getBackupJobHistory(jobId, limit = 20) {
+  return request(`/backups/jobs/${jobId}/history?limit=${limit}`);
+}
+
+// ==================== SECURITY AUDIT ====================
+
+export function getSecurityOverview() {
+  return request('/security/overview');
+}
+
+export function getSecurityAudits(limit = 50) {
+  return request(`/security/audits?limit=${limit}`);
+}
+
+export function getLatestSecurityAudit(serverId) {
+  return request(`/security/server/${serverId}/latest`);
+}
+
+export function runSecurityAudit(serverId) {
+  return request(`/security/audit/${serverId}`, {
+    method: 'POST'
+  });
+}
+
+export function getSecuritySettings() {
+  return request('/security/settings');
+}
+
+export function updateSecuritySettings(settings) {
+  return request('/security/settings', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  });
+}

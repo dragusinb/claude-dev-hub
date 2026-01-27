@@ -14,9 +14,15 @@ import githubRoutes from './routes/github.js';
 import svnRoutes from './routes/svn.js';
 import monitoringRoutes from './routes/monitoring.js';
 import vaultRoutes from './routes/vault.js';
+import uptimeRoutes from './routes/uptime.js';
+import sslRoutes from './routes/ssl.js';
+import backupsRoutes from './routes/backups.js';
+import securityRoutes from './routes/security.js';
 import { initDatabase, getUserByEmail } from './models/database.js';
 import { handleWebSocket } from './services/claudeSession.js';
 import { startHealthCollector } from './services/healthCollector.js';
+import { startSSLCollector } from './services/sslCollector.js';
+import { startBackupScheduler } from './services/backupScheduler.js';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { createUser } from './models/database.js';
@@ -50,6 +56,10 @@ app.use('/api/settings', authenticateToken, settingsRoutes);
 app.use('/api/github', authenticateToken, githubRoutes);
 app.use('/api/svn', authenticateToken, svnRoutes);
 app.use('/api/vault', authenticateToken, vaultRoutes);
+app.use('/api/uptime', authenticateToken, uptimeRoutes);
+app.use('/api/ssl', authenticateToken, sslRoutes);
+app.use('/api/backups', authenticateToken, backupsRoutes);
+app.use('/api/security', authenticateToken, securityRoutes);
 app.use('/api', authenticateToken, monitoringRoutes);
 
 // WebSocket for Claude sessions
@@ -89,6 +99,12 @@ initDatabase().then(async () => {
 
   // Start health collector (every 5 minutes)
   startHealthCollector(5);
+
+  // Start SSL certificate collector (every 6 hours)
+  startSSLCollector(6);
+
+  // Start backup scheduler (checks every minute)
+  startBackupScheduler();
 
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
