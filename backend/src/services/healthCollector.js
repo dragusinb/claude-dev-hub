@@ -110,6 +110,16 @@ async function collectAllServersHealth() {
     const servers = getAllServersForMonitoring();
 
     for (const server of servers) {
+      // Check if credentials are available (decryption succeeded)
+      const hasCredentials = server.auth_type === 'password'
+        ? !!server.password
+        : !!server.private_key;
+
+      if (!hasCredentials) {
+        console.warn(`Skipping ${server.name}: credentials not available (decryption failed or not set)`);
+        continue; // Skip this server, don't send alerts for credential issues
+      }
+
       try {
         const stats = await collectServerHealth(server);
 
