@@ -67,7 +67,8 @@ function discoverDomainsFromServer(server) {
                     !domain.includes('*') &&
                     !domain.includes('$') &&
                     domain !== 'localhost' &&
-                    !domain.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+                    !domain.match(/^\d+\.\d+\.\d+\.\d+$/) &&
+                    !domain.match(/-\d{4}$/)) {  // Filter Let's Encrypt backup dirs like domain.com-0001
                   domains.add(domain);
                 }
               }
