@@ -3,25 +3,29 @@ import https from 'https';
 import http from 'http';
 import nodemailer from 'nodemailer';
 
-// SMTP Configuration from environment variables
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = parseInt(process.env.SMTP_PORT) || 587;
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
-
-// Create reusable transporter
+// Create reusable transporter (lazy initialization)
 let transporter = null;
 
+function getSmtpConfig() {
+  return {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || ''
+  };
+}
+
 function getTransporter() {
-  if (!transporter && SMTP_USER && SMTP_PASS) {
+  const config = getSmtpConfig();
+  if (!transporter && config.user && config.pass) {
     transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
+      host: config.host,
+      port: config.port,
+      secure: config.port === 465,
       auth: {
-        user: SMTP_USER,
-        pass: SMTP_PASS
+        user: config.user,
+        pass: config.pass
       }
     });
   }
@@ -84,6 +88,7 @@ async function sendWebhook(webhookUrl, payload) {
 // Send email notification
 async function sendEmail(to, subject, message) {
   const transport = getTransporter();
+  const config = getSmtpConfig();
 
   if (!transport) {
     console.log(`[EMAIL] SMTP not configured. Would send to: ${to}, Subject: ${subject}`);
@@ -107,7 +112,7 @@ async function sendEmail(to, subject, message) {
     `;
 
     const result = await transport.sendMail({
-      from: SMTP_FROM,
+      from: config.from,
       to: to,
       subject: subject,
       text: message,
@@ -144,10 +149,11 @@ export async function sendTestEmail(to) {
 
   // If SMTP is configured, use it
   const transport = getTransporter();
+  const config = getSmtpConfig();
   if (transport) {
     try {
       await transport.sendMail({
-        from: SMTP_FROM,
+        from: config.from,
         to: to,
         subject: subject,
         text: message,
