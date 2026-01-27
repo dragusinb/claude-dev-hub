@@ -1,4 +1,5 @@
 import express from 'express';
+import { Client } from 'ssh2';
 import {
   getSecurityAudits,
   getLatestSecurityAudit,
@@ -7,6 +8,96 @@ import {
   getServer
 } from '../models/database.js';
 import { runSecurityAudit } from '../services/securityAuditor.js';
+
+// Define fixable actions with their commands
+const SECURITY_ACTIONS = {
+  install_security_updates: {
+    name: 'Install Security Updates',
+    description: 'Install all pending security updates',
+    command: 'DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade --only-upgrade $(apt list --upgradable 2>/dev/null | grep -i security | cut -d/ -f1 | tail -n +2)',
+    category: 'updates'
+  },
+  install_all_updates: {
+    name: 'Install All Updates',
+    description: 'Install all pending package updates',
+    command: 'DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade',
+    category: 'updates'
+  },
+  install_fail2ban: {
+    name: 'Install Fail2Ban',
+    description: 'Install and enable fail2ban to protect against brute force attacks',
+    command: 'apt-get update && apt-get install -y fail2ban && systemctl enable fail2ban && systemctl start fail2ban',
+    category: 'ssh'
+  },
+  enable_firewall: {
+    name: 'Enable UFW Firewall',
+    description: 'Enable UFW firewall with default deny incoming, allow SSH/HTTP/HTTPS',
+    command: 'apt-get install -y ufw && ufw default deny incoming && ufw default allow outgoing && ufw allow ssh && ufw allow http && ufw allow https && echo "y" | ufw enable',
+    category: 'firewall'
+  },
+  disable_root_password: {
+    name: 'Disable Root Password Login',
+    description: 'Disable SSH password authentication for root (key-only)',
+    command: 'sed -i "s/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/" /etc/ssh/sshd_config && systemctl restart sshd',
+    category: 'ssh'
+  }
+};
+
+// Execute command on server via SSH
+function executeOnServer(server, command) {
+  return new Promise((resolve, reject) => {
+    const conn = new Client();
+    const timeout = setTimeout(() => {
+      conn.end();
+      reject(new Error('Command timeout'));
+    }, 300000); // 5 minute timeout for updates
+
+    conn.on('ready', () => {
+      conn.exec(command, (err, stream) => {
+        if (err) {
+          clearTimeout(timeout);
+          conn.end();
+          reject(err);
+          return;
+        }
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data) => {
+          stdout += data.toString();
+        });
+        stream.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        stream.on('close', (code) => {
+          clearTimeout(timeout);
+          conn.end();
+          resolve({ code, stdout, stderr });
+        });
+      });
+    });
+
+    conn.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    const config = {
+      host: server.host,
+      port: server.port,
+      username: server.username
+    };
+
+    if (server.auth_type === 'password') {
+      config.password = server.password;
+    } else {
+      config.privateKey = server.private_key;
+    }
+
+    conn.connect(config);
+  });
+}
 
 const router = express.Router();
 
@@ -169,6 +260,57 @@ router.get('/overview', async (req, res) => {
     });
   } catch (err) {
     console.error('Error getting security overview:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/security/actions - Get available security actions
+router.get('/actions', (req, res) => {
+  res.json(Object.entries(SECURITY_ACTIONS).map(([id, action]) => ({
+    id,
+    ...action
+  })));
+});
+
+// POST /api/security/action/:serverId - Execute a security action
+router.post('/action/:serverId', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const serverId = req.params.serverId;
+    const { actionId } = req.body;
+
+    // Validate action
+    const action = SECURITY_ACTIONS[actionId];
+    if (!action) {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    // Get server with credentials
+    const server = getServer(serverId, userId);
+    if (!server) {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+
+    // Check credentials
+    const hasCredentials = server.auth_type === 'password' ? !!server.password : !!server.private_key;
+    if (!hasCredentials) {
+      return res.status(400).json({ error: 'Server credentials not available' });
+    }
+
+    console.log(`Executing security action "${action.name}" on ${server.name}`);
+
+    // Execute the command
+    const result = await executeOnServer(server, action.command);
+
+    res.json({
+      success: result.code === 0,
+      action: action.name,
+      exitCode: result.code,
+      output: result.stdout,
+      error: result.stderr
+    });
+  } catch (err) {
+    console.error('Error executing security action:', err);
     res.status(500).json({ error: err.message });
   }
 });

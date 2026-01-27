@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, RefreshCw, AlertTriangle, CheckCircle, XCircle, Server, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldCheck, RefreshCw, AlertTriangle, CheckCircle, XCircle, Server, ChevronDown, ChevronUp, Play, X, Terminal } from 'lucide-react';
 import * as api from '../services/api';
 
 function Security() {
@@ -10,6 +10,10 @@ function Security() {
   const [serverAudit, setServerAudit] = useState(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [runningAudit, setRunningAudit] = useState(null);
+  const [actions, setActions] = useState([]);
+  const [actionModal, setActionModal] = useState(null);
+  const [actionRunning, setActionRunning] = useState(false);
+  const [actionResult, setActionResult] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -18,17 +22,62 @@ function Security() {
   async function loadData() {
     try {
       setLoading(true);
-      const [overviewData, serversData] = await Promise.all([
+      const [overviewData, serversData, actionsData] = await Promise.all([
         api.getSecurityOverview(),
-        api.getServers()
+        api.getServers(),
+        api.getSecurityActions()
       ]);
       setOverview(overviewData);
       setServers(serversData);
+      setActions(actionsData);
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function executeAction(serverId, actionId) {
+    try {
+      setActionRunning(true);
+      setActionResult(null);
+      const result = await api.executeSecurityAction(serverId, actionId);
+      setActionResult(result);
+      // Refresh audit data after action
+      if (result.success) {
+        loadServerAudit(serverId);
+        loadData();
+      }
+    } catch (err) {
+      setActionResult({ success: false, error: err.message });
+    } finally {
+      setActionRunning(false);
+    }
+  }
+
+  function getRecommendedActions(audit) {
+    if (!audit || !actions.length) return [];
+    const recommended = [];
+
+    // Check for security updates
+    if (audit.security_updates > 0) {
+      const action = actions.find(a => a.id === 'install_security_updates');
+      if (action) recommended.push({ ...action, reason: `${audit.security_updates} security updates pending` });
+    }
+
+    // Check for many pending updates
+    if (audit.pending_updates > 10) {
+      const action = actions.find(a => a.id === 'install_all_updates');
+      if (action) recommended.push({ ...action, reason: `${audit.pending_updates} updates pending` });
+    }
+
+    // Check for failed SSH attempts
+    if (audit.failed_ssh_attempts > 20) {
+      const action = actions.find(a => a.id === 'install_fail2ban');
+      if (action) recommended.push({ ...action, reason: `${audit.failed_ssh_attempts} failed SSH attempts` });
+    }
+
+    return recommended;
   }
 
   async function loadServerAudit(serverId) {
@@ -315,6 +364,30 @@ function Security() {
                                 </ul>
                               </div>
                             )}
+
+                            {/* Quick Actions */}
+                            {getRecommendedActions(serverAudit).length > 0 && (
+                              <div>
+                                <div className="text-sm text-slate-400 mb-2">Quick Actions</div>
+                                <div className="space-y-2">
+                                  {getRecommendedActions(serverAudit).map((action) => (
+                                    <div key={action.id} className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                                      <div>
+                                        <div className="font-medium text-sm">{action.name}</div>
+                                        <div className="text-xs text-slate-400">{action.reason}</div>
+                                      </div>
+                                      <button
+                                        onClick={() => setActionModal({ serverId: server.id, serverName: server.name, action })}
+                                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded text-sm transition-colors"
+                                      >
+                                        <Play className="w-3 h-3" />
+                                        Fix Now
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="text-center py-8 text-slate-400">
@@ -331,6 +404,98 @@ function Security() {
             </div>
           )}
         </>
+      )}
+
+      {/* Action Confirmation Modal */}
+      {actionModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-5 h-5 text-orange-500" />
+                <h3 className="font-bold">{actionModal.action.name}</h3>
+              </div>
+              <button
+                onClick={() => { setActionModal(null); setActionResult(null); }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-auto">
+              <div className="mb-4">
+                <div className="text-sm text-slate-400 mb-1">Server</div>
+                <div className="font-medium">{actionModal.serverName}</div>
+              </div>
+
+              <div className="mb-4">
+                <div className="text-sm text-slate-400 mb-1">Description</div>
+                <div className="text-sm">{actionModal.action.description}</div>
+              </div>
+
+              <div className="mb-4">
+                <div className="text-sm text-slate-400 mb-1">Command to execute</div>
+                <pre className="bg-slate-900 rounded-lg p-3 text-xs overflow-x-auto text-green-400">
+                  {actionModal.action.command}
+                </pre>
+              </div>
+
+              {actionResult && (
+                <div className="mb-4">
+                  <div className="text-sm text-slate-400 mb-1">Result</div>
+                  <div className={`p-3 rounded-lg ${actionResult.success ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {actionResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                      <span className="font-medium">{actionResult.success ? 'Success' : 'Failed'}</span>
+                      {actionResult.exitCode !== undefined && (
+                        <span className="text-xs opacity-70">(exit code: {actionResult.exitCode})</span>
+                      )}
+                    </div>
+                    {actionResult.output && (
+                      <pre className="bg-slate-900 rounded p-2 text-xs overflow-x-auto max-h-40 text-slate-300">
+                        {actionResult.output}
+                      </pre>
+                    )}
+                    {actionResult.error && (
+                      <pre className="bg-slate-900 rounded p-2 text-xs overflow-x-auto max-h-40 text-red-300 mt-2">
+                        {actionResult.error}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
+              <button
+                onClick={() => { setActionModal(null); setActionResult(null); }}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                {actionResult ? 'Close' : 'Cancel'}
+              </button>
+              {!actionResult && (
+                <button
+                  onClick={() => executeAction(actionModal.serverId, actionModal.action.id)}
+                  disabled={actionRunning}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {actionRunning ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Executing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      Execute
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

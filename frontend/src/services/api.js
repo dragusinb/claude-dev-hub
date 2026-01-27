@@ -439,3 +439,14 @@ export function updateSecuritySettings(settings) {
     body: JSON.stringify(settings)
   });
 }
+
+export function getSecurityActions() {
+  return request('/security/actions');
+}
+
+export function executeSecurityAction(serverId, actionId) {
+  return request(`/security/action/${serverId}`, {
+    method: 'POST',
+    body: JSON.stringify({ actionId })
+  });
+}

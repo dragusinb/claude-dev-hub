@@ -116,8 +116,8 @@ async function collectAllServersHealth() {
         : !!server.private_key;
 
       if (!hasCredentials) {
-        console.warn(`Skipping ${server.name}: credentials not available (decryption failed or not set)`);
-        continue; // Skip this server, don't send alerts for credential issues
+        // Silently skip servers without credentials - not an error condition
+        continue;
       }
 
       try {

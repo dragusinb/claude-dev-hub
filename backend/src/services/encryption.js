@@ -75,7 +75,7 @@ export function decrypt(encryptedData) {
 
     return decrypted;
   } catch (err) {
-    console.error('Decryption error:', err.message);
+    // Don't log as error - credential issues are handled gracefully by callers
     return null;
   }
 }
