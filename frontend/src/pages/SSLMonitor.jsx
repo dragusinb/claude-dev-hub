@@ -12,6 +12,7 @@ function SSLMonitor() {
   const [discovering, setDiscovering] = useState(false);
   const [discoverResults, setDiscoverResults] = useState(null);
   const [addingDomain, setAddingDomain] = useState(null);
+  const [addedDomains, setAddedDomains] = useState(new Set());
 
   const [formData, setFormData] = useState({
     domain: '',
@@ -133,6 +134,7 @@ function SSLMonitor() {
     try {
       setDiscovering(true);
       setShowDiscoverModal(true);
+      setAddedDomains(new Set());  // Reset added state
       const results = await api.discoverSSLDomains();
       setDiscoverResults(results);
     } catch (err) {
@@ -147,17 +149,36 @@ function SSLMonitor() {
     try {
       setAddingDomain(domain);
       await api.createSSLCertificate({ domain, port: 443, alertDays: 30, enabled: true });
-      // Remove from suggestions
-      setDiscoverResults(prev => ({
-        ...prev,
-        suggestions: prev.suggestions.filter(s => s.domain !== domain)
-      }));
+      // Mark as added (show success state)
+      setAddedDomains(prev => new Set([...prev, domain]));
       loadCertificates();
     } catch (err) {
       alert('Failed to add domain: ' + err.message);
     } finally {
       setAddingDomain(null);
     }
+  }
+
+  async function handleAddAllDiscovered() {
+    if (!discoverResults?.suggestions?.length) return;
+    const domainsToAdd = discoverResults.suggestions.filter(s => !addedDomains.has(s.domain));
+    if (domainsToAdd.length === 0) return;
+
+    setAddingDomain('__all__');
+    const newlyAdded = new Set(addedDomains);
+
+    for (const suggestion of domainsToAdd) {
+      try {
+        await api.createSSLCertificate({ domain: suggestion.domain, port: 443, alertDays: 30, enabled: true });
+        newlyAdded.add(suggestion.domain);
+      } catch (err) {
+        console.error(`Failed to add ${suggestion.domain}:`, err.message);
+      }
+    }
+
+    setAddedDomains(newlyAdded);
+    loadCertificates();
+    setAddingDomain(null);
   }
 
   return (
@@ -418,32 +439,75 @@ function SSLMonitor() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="text-sm text-slate-400 mb-2">
-                      Found {discoverResults.suggestions.length} new domains:
-                    </div>
-                    {discoverResults.suggestions.map(s => (
-                      <div
-                        key={s.domain}
-                        className="flex items-center justify-between p-3 bg-slate-900 rounded-lg"
-                      >
-                        <div>
-                          <div className="font-medium">{s.domain}</div>
-                          <div className="text-xs text-slate-500">from {s.serverName}</div>
-                        </div>
-                        <button
-                          onClick={() => handleAddDiscovered(s.domain)}
-                          disabled={addingDomain === s.domain}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded text-sm transition-colors disabled:opacity-50"
-                        >
-                          {addingDomain === s.domain ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Plus className="w-4 h-4" />
-                          )}
-                          Add
-                        </button>
-                      </div>
-                    ))}
+                    {(() => {
+                      const remaining = discoverResults.suggestions.filter(s => !addedDomains.has(s.domain));
+                      const allAdded = remaining.length === 0;
+
+                      return (
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm text-slate-400">
+                              {allAdded ? (
+                                <span className="text-green-400">All {discoverResults.suggestions.length} domains added!</span>
+                              ) : (
+                                <>Found {discoverResults.suggestions.length} domains ({addedDomains.size} added):</>
+                              )}
+                            </div>
+                            {!allAdded && (
+                              <button
+                                onClick={handleAddAllDiscovered}
+                                disabled={!!addingDomain}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-500 rounded text-sm transition-colors disabled:opacity-50"
+                              >
+                                {addingDomain === '__all__' ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Plus className="w-4 h-4" />
+                                )}
+                                Add All ({remaining.length})
+                              </button>
+                            )}
+                          </div>
+                          {discoverResults.suggestions.map(s => {
+                            const isAdded = addedDomains.has(s.domain);
+                            const isAdding = addingDomain === s.domain;
+
+                            return (
+                              <div
+                                key={s.domain}
+                                className={`flex items-center justify-between p-3 rounded-lg transition-all ${
+                                  isAdded ? 'bg-green-900/30 border border-green-700' : 'bg-slate-900'
+                                } ${addingDomain === '__all__' && !isAdded ? 'opacity-50' : ''}`}
+                              >
+                                <div>
+                                  <div className="font-medium flex items-center gap-2">
+                                    {s.domain}
+                                    {isAdded && <CheckCircle className="w-4 h-4 text-green-500" />}
+                                  </div>
+                                  <div className="text-xs text-slate-500">from {s.serverName}</div>
+                                </div>
+                                {isAdded ? (
+                                  <span className="text-green-400 text-sm">Added</span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleAddDiscovered(s.domain)}
+                                    disabled={!!addingDomain}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded text-sm transition-colors disabled:opacity-50"
+                                  >
+                                    {isAdding ? (
+                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Plus className="w-4 h-4" />
+                                    )}
+                                    Add
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

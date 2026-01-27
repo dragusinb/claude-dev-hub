@@ -120,28 +120,46 @@ const PORT_DESCRIPTIONS = {
   22: 'SSH',
   23: 'Telnet',
   25: 'SMTP',
+  53: 'DNS',
   80: 'HTTP',
   110: 'POP3',
   143: 'IMAP',
   443: 'HTTPS',
+  465: 'SMTPS',
+  587: 'SMTP Submission',
+  631: 'CUPS Printing',
+  993: 'IMAPS',
+  995: 'POP3S',
   3306: 'MySQL',
   5432: 'PostgreSQL',
   6379: 'Redis',
+  8080: 'HTTP Alt',
+  8443: 'HTTPS Alt',
+  10000: 'Webmin',
   27017: 'MongoDB'
 };
 
 // Analyze audit results and generate findings/recommendations
 function analyzeAudit(audit) {
-  // Check open ports
-  const riskyPorts = [21, 23, 25, 110, 143];
+  // Track deductions per category to apply caps
+  const deductions = { ports: 0, firewall: 0, ssh: 0, updates: 0 };
+  const maxDeductions = { ports: 30, firewall: 15, ssh: 25, updates: 25 };
+
+  // Port categories
+  const riskyPorts = [21, 23];  // FTP, Telnet - truly dangerous
+  const mailPorts = [25, 110, 143];  // SMTP, POP3, IMAP - risky if not mail server
+  const secureMailPorts = [993, 995, 465, 587];  // IMAPS, POP3S, SMTPS, Submission
   const databasePorts = [3306, 5432, 6379, 27017];
-  const commonPorts = [22, 80, 443];
+  const commonPorts = [22, 80, 443, 53];  // SSH, HTTP, HTTPS, DNS
+
+  // Check if this looks like a mail server (has secure mail ports open)
+  const isMailServer = audit.openPorts.some(p => secureMailPorts.includes(p)) ||
+                       audit.openPorts.filter(p => mailPorts.includes(p)).length >= 2;
 
   for (const port of audit.openPorts) {
     const portName = PORT_DESCRIPTIONS[port] || `Port ${port}`;
 
     if (databasePorts.includes(port)) {
-      // Database ports should be restricted to localhost, not blocked
       audit.findings.push({
         severity: 'high',
         category: 'ports',
@@ -150,27 +168,55 @@ function analyzeAudit(audit) {
         action: `restrict_port_${port}_localhost`
       });
       audit.recommendations.push(`Restrict ${portName} (port ${port}) to localhost only`);
-      audit.score -= 15;
+      deductions.ports += 15;
     } else if (riskyPorts.includes(port)) {
       audit.findings.push({
         severity: 'high',
         category: 'ports',
         port: port,
-        message: `${portName} (${port}) is open and exposed to the internet`,
+        message: `${portName} (${port}) is open - this is a security risk`,
         action: `block_port_${port}`
       });
       audit.recommendations.push(`Block ${portName} (port ${port}) with firewall`);
-      audit.score -= 10;
+      deductions.ports += 10;
+    } else if (mailPorts.includes(port)) {
+      if (isMailServer) {
+        audit.findings.push({
+          severity: 'info',
+          category: 'ports',
+          port: port,
+          message: `${portName} (${port}) is open (mail server detected)`
+        });
+      } else {
+        audit.findings.push({
+          severity: 'medium',
+          category: 'ports',
+          port: port,
+          message: `${portName} (${port}) is open - consider blocking if not a mail server`,
+          action: `block_port_${port}`
+        });
+        deductions.ports += 5;
+      }
+    } else if (secureMailPorts.includes(port)) {
+      audit.findings.push({
+        severity: 'info',
+        category: 'ports',
+        port: port,
+        message: `${portName} (${port}) is open (secure mail port)`
+      });
     } else if (!commonPorts.includes(port)) {
       audit.findings.push({
-        severity: 'medium',
+        severity: 'low',
         category: 'ports',
         port: port,
         message: `Non-standard port ${port} is open`
       });
-      audit.score -= 3;
+      deductions.ports += 2;
     }
   }
+
+  // Apply capped deductions for ports
+  audit.score -= Math.min(deductions.ports, maxDeductions.ports);
 
   // Check firewall status
   if (!audit.firewallActive) {
@@ -181,7 +227,7 @@ function analyzeAudit(audit) {
       action: 'enable_firewall'
     });
     audit.recommendations.push('Enable UFW firewall to protect against unauthorized access');
-    audit.score -= 15;
+    deductions.firewall += 15;
   } else {
     audit.findings.push({
       severity: 'info',
@@ -189,6 +235,9 @@ function analyzeAudit(audit) {
       message: 'Firewall (UFW) is active'
     });
   }
+
+  // Apply capped deductions for firewall
+  audit.score -= Math.min(deductions.firewall, maxDeductions.firewall);
 
   // Check fail2ban status
   if (!audit.fail2banActive) {
@@ -199,7 +248,7 @@ function analyzeAudit(audit) {
         message: 'Fail2ban is not installed/active and SSH attacks detected',
         action: 'install_fail2ban'
       });
-      audit.score -= 10;
+      deductions.ssh += 10;
     }
   } else {
     audit.findings.push({
@@ -208,6 +257,29 @@ function analyzeAudit(audit) {
       message: 'Fail2ban is active - protecting against brute force'
     });
   }
+
+  // Check failed SSH attempts (only if fail2ban not active)
+  if (!audit.fail2banActive) {
+    if (audit.failedSshAttempts > 50) {
+      audit.findings.push({
+        severity: 'medium',
+        category: 'ssh',
+        message: `${audit.failedSshAttempts} failed SSH login attempts detected`
+      });
+      audit.recommendations.push('Install fail2ban to automatically block attackers');
+      deductions.ssh += 10;
+    } else if (audit.failedSshAttempts > 10) {
+      audit.findings.push({
+        severity: 'low',
+        category: 'ssh',
+        message: `${audit.failedSshAttempts} failed SSH login attempts detected`
+      });
+      deductions.ssh += 5;
+    }
+  }
+
+  // Apply capped deductions for SSH
+  audit.score -= Math.min(deductions.ssh, maxDeductions.ssh);
 
   // Check security updates
   if (audit.securityUpdates > 0) {
@@ -218,7 +290,7 @@ function analyzeAudit(audit) {
       action: 'install_security_updates'
     });
     audit.recommendations.push('Install pending security updates immediately');
-    audit.score -= Math.min(audit.securityUpdates * 5, 25);
+    deductions.updates += Math.min(audit.securityUpdates * 3, 15);
   }
 
   // Check pending updates
@@ -230,31 +302,18 @@ function analyzeAudit(audit) {
       action: 'install_all_updates'
     });
     audit.recommendations.push('Schedule a maintenance window to update packages');
-    audit.score -= Math.min(audit.pendingUpdates, 15);
+    deductions.updates += Math.min(Math.floor(audit.pendingUpdates / 5), 10);
   }
 
-  // Check failed SSH attempts (only if fail2ban not active)
-  if (!audit.fail2banActive) {
-    if (audit.failedSshAttempts > 50) {
-      audit.findings.push({
-        severity: 'high',
-        category: 'ssh',
-        message: `${audit.failedSshAttempts} failed SSH login attempts detected`
-      });
-      audit.recommendations.push('Install fail2ban to automatically block attackers');
-      audit.score -= 15;
-    } else if (audit.failedSshAttempts > 10) {
-      audit.findings.push({
-        severity: 'medium',
-        category: 'ssh',
-        message: `${audit.failedSshAttempts} failed SSH login attempts detected`
-      });
-      audit.score -= 5;
-    }
-  }
+  // Apply capped deductions for updates
+  audit.score -= Math.min(deductions.updates, maxDeductions.updates);
 
-  // Ensure score doesn't go below 0
-  audit.score = Math.max(0, audit.score);
+  // Ensure score doesn't go below 10 if firewall is active (base protection)
+  if (audit.firewallActive) {
+    audit.score = Math.max(10, audit.score);
+  } else {
+    audit.score = Math.max(0, audit.score);
+  }
 
   // Add positive findings
   if (audit.openPorts.length <= 3) {
@@ -293,9 +352,9 @@ export async function runSecurityAudit(server, userId) {
       recommendations: auditResult.recommendations
     });
 
-    // Send alert if score is critical
+    // Security email alerts disabled - log only
     if (auditResult.score < 50) {
-      await sendSecurityAlert(server, auditResult);
+      console.log(`[ALERT] Security audit for ${server.name} (${server.host}) returned critical score: ${auditResult.score}/100`);
     }
 
     console.log(`Security audit complete for ${server.name}: Score ${auditResult.score}`);

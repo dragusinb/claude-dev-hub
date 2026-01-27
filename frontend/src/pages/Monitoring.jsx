@@ -14,7 +14,6 @@ function Monitoring() {
   const [alertSettings, setAlertSettings] = useState(null);
   const [alertHistory, setAlertHistory] = useState([]);
   const [activeTab, setActiveTab] = useState('health');
-  const [selectedServer, setSelectedServer] = useState(null);
   const [historyHours, setHistoryHours] = useState(24);
   const [savingAlerts, setSavingAlerts] = useState(false);
 
@@ -23,10 +22,9 @@ function Monitoring() {
   }, []);
 
   useEffect(() => {
-    if (selectedServer) {
-      loadServerHistory(selectedServer);
-    }
-  }, [selectedServer, historyHours]);
+    // Load history for all servers when time range changes
+    servers.forEach(server => loadServerHistory(server.id));
+  }, [servers, historyHours]);
 
   async function loadData() {
     setLoading(true);
@@ -47,11 +45,6 @@ function Monitoring() {
       // Load health for all servers
       for (const server of serversData) {
         loadServerHealth(server.id);
-      }
-
-      // Select first server for history if available
-      if (serversData.length > 0 && !selectedServer) {
-        setSelectedServer(serversData[0].id);
       }
     } catch (err) {
       console.error('Failed to load monitoring data:', err);
@@ -146,8 +139,6 @@ function Monitoring() {
   function formatAlertType(type) {
     return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
-
-  const currentHistory = historyData[selectedServer] || [];
 
   return (
     <div className="p-6">
@@ -376,19 +367,7 @@ function Monitoring() {
                 </div>
               ) : (
                 <div>
-                  <div className="flex gap-4 mb-6">
-                    <div>
-                      <label className="block text-sm font-medium mb-1 text-slate-400">Server</label>
-                      <select
-                        value={selectedServer || ''}
-                        onChange={(e) => setSelectedServer(e.target.value)}
-                        className="px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg focus:outline-none focus:border-orange-500"
-                      >
-                        {servers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="flex justify-end mb-6">
                     <div>
                       <label className="block text-sm font-medium mb-1 text-slate-400">Time Range</label>
                       <select
@@ -406,42 +385,46 @@ function Monitoring() {
                     </div>
                   </div>
 
-                  {currentHistory.length === 0 ? (
-                    <div className="text-center py-12 bg-slate-800 rounded-lg border border-slate-700">
-                      <TrendingUp className="w-12 h-12 mx-auto text-slate-600 mb-2" />
-                      <p className="text-slate-400">No history data available yet</p>
-                      <p className="text-slate-500 text-sm mt-1">Data is collected every 5 minutes</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Combined Graph */}
-                      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                          <TrendingUp className="w-5 h-5 text-purple-500" />
-                          All Metrics
-                        </h3>
-                        <div className="h-80">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={currentHistory}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                              <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} />
-                              <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} domain={[0, 100]} />
-                              <Tooltip
-                                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                                labelStyle={{ color: '#e2e8f0' }}
-                                formatter={(value, name) => [`${value?.toFixed(1)}%`, name]}
-                                labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTime || label}
-                              />
-                              <Legend />
-                              <Line type="monotone" dataKey="cpu" name="CPU" stroke="#f97316" strokeWidth={2} dot={false} />
-                              <Line type="monotone" dataKey="memory" name="Memory" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                              <Line type="monotone" dataKey="disk" name="Disk" stroke="#22c55e" strokeWidth={2} dot={false} />
-                            </LineChart>
-                          </ResponsiveContainer>
+                  <div className="space-y-6">
+                    {servers.map(server => {
+                      const serverHistory = historyData[server.id] || [];
+                      return (
+                        <div key={server.id} className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+                          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                            <Server className="w-5 h-5 text-orange-500" />
+                            {server.name}
+                            <span className="text-sm font-normal text-slate-400">({server.host})</span>
+                          </h3>
+                          {serverHistory.length === 0 ? (
+                            <div className="text-center py-8 text-slate-500">
+                              <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                              <p>No history data yet</p>
+                            </div>
+                          ) : (
+                            <div className="h-64">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={serverHistory}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                  <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} domain={[0, 100]} />
+                                  <Tooltip
+                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                                    labelStyle={{ color: '#e2e8f0' }}
+                                    formatter={(value, name) => [`${value?.toFixed(1)}%`, name]}
+                                    labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTime || label}
+                                  />
+                                  <Legend />
+                                  <Line type="monotone" dataKey="cpu" name="CPU" stroke="#f97316" strokeWidth={2} dot={false} />
+                                  <Line type="monotone" dataKey="memory" name="Memory" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                                  <Line type="monotone" dataKey="disk" name="Disk" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
