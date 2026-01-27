@@ -8,7 +8,7 @@ import {
   getSSLCertificateByDomain,
   updateSSLCertificate,
   deleteSSLCertificate,
-  getServers
+  getServersWithCredentials
 } from '../models/database.js';
 import { checkSingleSSLCertificate } from '../services/sslCollector.js';
 
@@ -47,6 +47,8 @@ function discoverDomainsFromServer(server) {
           clearTimeout(timeout);
           conn.end();
 
+          console.log(`[SSL Discovery] ${server.name}: Raw output length: ${output.length}`);
+
           const domains = new Set();
           const sections = output.split('===');
 
@@ -72,10 +74,13 @@ function discoverDomainsFromServer(server) {
             }
           }
 
+          const domainList = Array.from(domains).sort();
+          console.log(`[SSL Discovery] ${server.name}: Found ${domainList.length} domains:`, domainList);
+
           resolve({
             serverId: server.id,
             serverName: server.name,
-            domains: Array.from(domains).sort()
+            domains: domainList
           });
         });
       });
@@ -189,7 +194,7 @@ router.post('/', async (req, res) => {
 router.get('/discover', async (req, res) => {
   try {
     const userId = req.user.id;
-    const servers = getServers(userId);
+    const servers = getServersWithCredentials(userId);
     const existingCerts = getSSLCertificates(userId);
     const existingDomains = new Set(existingCerts.map(c => c.domain.toLowerCase()));
 

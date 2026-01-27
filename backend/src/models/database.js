@@ -479,6 +479,16 @@ export function getServers(userId) {
   return getDb().prepare('SELECT id, name, host, port, username, auth_type, deploy_path, created_at FROM servers WHERE user_id = ?').all(userId);
 }
 
+// Get servers with decrypted credentials (for SSH operations)
+export function getServersWithCredentials(userId) {
+  const servers = getDb().prepare('SELECT * FROM servers WHERE user_id = ?').all(userId);
+  return servers.map(server => ({
+    ...server,
+    password: server.password ? decrypt(server.password) : null,
+    private_key: server.private_key ? decrypt(server.private_key) : null
+  }));
+}
+
 export function getServer(id, userId) {
   const server = getDb().prepare('SELECT * FROM servers WHERE id = ? AND user_id = ?').get(id, userId);
   if (server) {
