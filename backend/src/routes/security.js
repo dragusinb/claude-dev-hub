@@ -14,7 +14,7 @@ const SECURITY_ACTIONS = {
   install_security_updates: {
     name: 'Install Security Updates',
     description: 'Install all pending security updates',
-    command: 'DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade --only-upgrade $(apt list --upgradable 2>/dev/null | grep -i security | cut -d/ -f1 | tail -n +2)',
+    command: 'DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade',
     category: 'updates'
   },
   install_all_updates: {
@@ -42,6 +42,24 @@ const SECURITY_ACTIONS = {
     category: 'ssh'
   }
 };
+
+// Port descriptions
+const PORT_NAMES = {
+  21: 'FTP', 23: 'Telnet', 25: 'SMTP', 110: 'POP3', 143: 'IMAP',
+  3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis', 27017: 'MongoDB'
+};
+
+// Generate dynamic port blocking action
+function getPortBlockAction(port) {
+  const portName = PORT_NAMES[port] || `Port ${port}`;
+  return {
+    id: `block_port_${port}`,
+    name: `Block ${portName}`,
+    description: `Block port ${port} (${portName}) using UFW firewall`,
+    command: `ufw deny ${port} && ufw reload`,
+    category: 'ports'
+  };
+}
 
 // Execute command on server via SSH
 function executeOnServer(server, command) {
@@ -279,8 +297,18 @@ router.post('/action/:serverId', async (req, res) => {
     const serverId = req.params.serverId;
     const { actionId } = req.body;
 
-    // Validate action
-    const action = SECURITY_ACTIONS[actionId];
+    // Check for dynamic port blocking action
+    let action;
+    if (actionId.startsWith('block_port_')) {
+      const port = parseInt(actionId.replace('block_port_', ''));
+      if (isNaN(port)) {
+        return res.status(400).json({ error: 'Invalid port number' });
+      }
+      action = getPortBlockAction(port);
+    } else {
+      action = SECURITY_ACTIONS[actionId];
+    }
+
     if (!action) {
       return res.status(400).json({ error: 'Invalid action' });
     }

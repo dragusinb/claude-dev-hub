@@ -23,6 +23,7 @@ import { handleWebSocket } from './services/claudeSession.js';
 import { startHealthCollector } from './services/healthCollector.js';
 import { startSSLCollector } from './services/sslCollector.js';
 import { startBackupScheduler } from './services/backupScheduler.js';
+import { startSecurityAuditor } from './services/securityAuditor.js';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { createUser } from './models/database.js';
@@ -105,6 +106,9 @@ initDatabase().then(async () => {
 
   // Start backup scheduler (checks every minute)
   startBackupScheduler();
+
+  // Start security auditor (runs every 24 hours)
+  startSecurityAuditor(24);
 
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

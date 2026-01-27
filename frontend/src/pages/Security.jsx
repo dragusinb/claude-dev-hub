@@ -56,25 +56,34 @@ function Security() {
   }
 
   function getRecommendedActions(audit) {
-    if (!audit || !actions.length) return [];
+    if (!audit) return [];
     const recommended = [];
+    const addedActions = new Set();
 
-    // Check for security updates
-    if (audit.security_updates > 0) {
-      const action = actions.find(a => a.id === 'install_security_updates');
-      if (action) recommended.push({ ...action, reason: `${audit.security_updates} security updates pending` });
-    }
+    // Get actions from findings that have an action field
+    if (audit.findings) {
+      for (const finding of audit.findings) {
+        if (finding.action && finding.severity !== 'info' && !addedActions.has(finding.action)) {
+          addedActions.add(finding.action);
 
-    // Check for many pending updates
-    if (audit.pending_updates > 10) {
-      const action = actions.find(a => a.id === 'install_all_updates');
-      if (action) recommended.push({ ...action, reason: `${audit.pending_updates} updates pending` });
-    }
+          // Find matching static action or create dynamic one for ports
+          let action = actions.find(a => a.id === finding.action);
 
-    // Check for failed SSH attempts
-    if (audit.failed_ssh_attempts > 20) {
-      const action = actions.find(a => a.id === 'install_fail2ban');
-      if (action) recommended.push({ ...action, reason: `${audit.failed_ssh_attempts} failed SSH attempts` });
+          if (!action && finding.action.startsWith('block_port_')) {
+            const port = finding.action.replace('block_port_', '');
+            action = {
+              id: finding.action,
+              name: `Block Port ${port}`,
+              description: `Block port ${port} using UFW firewall`,
+              command: `ufw deny ${port} && ufw reload`
+            };
+          }
+
+          if (action) {
+            recommended.push({ ...action, reason: finding.message });
+          }
+        }
+      }
     }
 
     return recommended;
