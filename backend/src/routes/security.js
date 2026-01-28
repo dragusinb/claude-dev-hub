@@ -52,6 +52,9 @@ const PORT_NAMES = {
 // Database ports that should be restricted to localhost rather than blocked
 const DATABASE_PORTS = [3306, 5432, 6379, 27017];
 
+// Check if UFW is enabled - prefix for port commands
+const UFW_CHECK = 'ufw status | grep -q "Status: active" || { echo "ERROR: UFW firewall is not enabled. Please enable the firewall first using the Enable UFW Firewall action."; exit 1; }';
+
 // Generate dynamic port action
 function getPortAction(port, actionType = 'block') {
   const portName = PORT_NAMES[port] || `Port ${port}`;
@@ -61,8 +64,8 @@ function getPortAction(port, actionType = 'block') {
     return {
       id: `allow_port_${port}`,
       name: `Allow ${portName}`,
-      description: `Remove firewall restrictions and allow ${portName} (port ${port}) from anywhere.`,
-      command: `ufw delete deny ${port} 2>/dev/null; ufw delete allow from 127.0.0.1 to any port ${port} 2>/dev/null; ufw allow ${port} && ufw reload`,
+      description: `Remove firewall restrictions and allow ${portName} (port ${port}) from anywhere. Requires UFW to be enabled.`,
+      command: `${UFW_CHECK} && ufw delete deny ${port} 2>/dev/null; ufw delete allow from 127.0.0.1 to any port ${port} 2>/dev/null; ufw allow ${port} && ufw reload`,
       category: 'ports',
       isUndo: true
     };
@@ -72,8 +75,8 @@ function getPortAction(port, actionType = 'block') {
     return {
       id: `restrict_port_${port}_localhost`,
       name: `Restrict ${portName} to localhost`,
-      description: `Allow ${portName} (port ${port}) only from localhost (127.0.0.1). Remote connections will be blocked.`,
-      command: `ufw delete allow ${port} 2>/dev/null; ufw deny ${port} && ufw allow from 127.0.0.1 to any port ${port} && ufw reload`,
+      description: `Allow ${portName} (port ${port}) only from localhost (127.0.0.1). Remote connections will be blocked. Requires UFW to be enabled.`,
+      command: `${UFW_CHECK} && ufw delete allow ${port} 2>/dev/null; ufw deny ${port} && ufw allow from 127.0.0.1 to any port ${port} && ufw reload`,
       category: 'ports',
       undoAction: `allow_port_${port}`
     };
@@ -82,8 +85,8 @@ function getPortAction(port, actionType = 'block') {
   return {
     id: `block_port_${port}`,
     name: `Block ${portName}`,
-    description: `Completely block port ${port} (${portName}) using UFW firewall`,
-    command: `ufw deny ${port} && ufw reload`,
+    description: `Completely block port ${port} (${portName}) using UFW firewall. Requires UFW to be enabled.`,
+    command: `${UFW_CHECK} && ufw deny ${port} && ufw reload`,
     category: 'ports',
     undoAction: `allow_port_${port}`
   };
