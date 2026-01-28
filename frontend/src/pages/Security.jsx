@@ -42,11 +42,22 @@ function Security() {
       setActionRunning(true);
       setActionResult(null);
       const result = await api.executeSecurityAction(serverId, actionId);
-      setActionResult(result);
-      // Refresh audit data after action
+
+      // After successful action, run a new audit to update findings/score
       if (result.success) {
+        setActionResult({ ...result, auditRunning: true });
+        // Run a new audit to refresh the findings
+        try {
+          await api.runSecurityAudit(serverId);
+          setActionResult({ ...result, auditCompleted: true });
+        } catch (auditErr) {
+          console.log('Auto-audit after action failed:', auditErr.message);
+          setActionResult({ ...result, auditFailed: true });
+        }
         loadServerAudit(serverId);
         loadData();
+      } else {
+        setActionResult(result);
       }
     } catch (err) {
       setActionResult({ success: false, error: err.message });
@@ -64,6 +75,12 @@ function Security() {
         isUndo: true
       });
       if (result.success) {
+        // Run a new audit to refresh the findings
+        try {
+          await api.runSecurityAudit(serverId);
+        } catch (auditErr) {
+          console.log('Auto-audit after undo failed:', auditErr.message);
+        }
         loadServerAudit(serverId);
         loadData();
       }
@@ -499,6 +516,28 @@ function Security() {
                       <pre className="bg-slate-900 rounded p-2 text-xs overflow-x-auto max-h-40 text-red-300 mt-2">
                         {actionResult.error}
                       </pre>
+                    )}
+                    {actionResult.success && (
+                      <div className="mt-2 pt-2 border-t border-slate-700 text-xs">
+                        {actionResult.auditRunning && !actionResult.auditCompleted && (
+                          <div className="flex items-center gap-2 text-yellow-400">
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            Running security audit to update findings...
+                          </div>
+                        )}
+                        {actionResult.auditCompleted && (
+                          <div className="flex items-center gap-2 text-green-400">
+                            <CheckCircle className="w-3 h-3" />
+                            Security audit updated. Close to see new results.
+                          </div>
+                        )}
+                        {actionResult.auditFailed && (
+                          <div className="flex items-center gap-2 text-yellow-400">
+                            <AlertTriangle className="w-3 h-3" />
+                            Auto-audit failed. Run manually to update findings.
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

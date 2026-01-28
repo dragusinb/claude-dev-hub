@@ -27,6 +27,14 @@ This is a persistent task list for tracking ongoing work and improvements.
 - [x] Disable security email alerts (log only)
 - [x] Fix SSL collector log showing "undefined days" on errors
 - [x] Add 'low' severity styling in Security page
+- [x] Testing Infrastructure - Vitest setup with comprehensive test suite:
+  - Unit tests: security scoring, cron parser, backup scheduler, SSL collector
+  - Integration tests: SSL API, Security API, Servers API, Backups API
+  - Test helpers: mock data generators, mock request/response utilities
+- [x] Security Fix Now improvements:
+  - Auto-run security audit after successful action to update findings
+  - Better visual feedback showing audit progress after action
+  - Fixed localhost-only port detection (ports restricted to 127.0.0.1 no longer flagged as exposed)
 
 ## In Progress
 
@@ -35,7 +43,13 @@ This is a persistent task list for tracking ongoing work and improvements.
 ## Backlog
 
 ### High Priority
-- [ ] Claude session launch issue - Gets stuck after theme selection (investigate Docker mount)
+- [x] Claude session launch improvements (partially addressed):
+  - Improved theme selection pattern detection (case-insensitive, multiple patterns)
+  - Added handling for trust project prompts
+  - Added handling for y/n confirmation prompts
+  - Added debouncing to prevent multiple auto-responses
+  - Added better logging for debugging
+  - NOTE: Needs testing on production server
 
 ### Medium Priority
 - [ ] Add "Restrict port to IP" action (allow specific IP only)

@@ -16,7 +16,7 @@ async function auditServer(server) {
     conn.on('ready', () => {
       const commands = `
         echo "===PORTS==="
-        ss -tuln 2>/dev/null | grep LISTEN | awk '{print $5}' | rev | cut -d: -f1 | rev | sort -n | uniq
+        ss -tuln 2>/dev/null | grep LISTEN | awk '{print $5}' | sort -u
         echo "===UPDATES==="
         apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l
         echo "===SECURITY==="
@@ -56,6 +56,7 @@ async function auditServer(server) {
           const sections = output.split('===');
           const audit = {
             openPorts: [],
+            localhostOnlyPorts: [], // Ports that are only accessible from localhost
             pendingUpdates: 0,
             securityUpdates: 0,
             failedSshAttempts: 0,
@@ -71,7 +72,64 @@ async function auditServer(server) {
             const data = sections[i + 1]?.trim() || '';
 
             if (section === 'PORTS') {
-              audit.openPorts = data.split('\n').filter(p => p && !isNaN(parseInt(p))).map(p => parseInt(p));
+              // Parse port info including binding address
+              // Format: "0.0.0.0:22" or "127.0.0.1:3306" or "[::]:80"
+              const portSet = new Set();
+              const localhostSet = new Set();
+
+              for (const line of data.split('\n')) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
+                // Extract port from the address
+                let port, isLocalhost = false;
+
+                if (trimmed.startsWith('[::')) {
+                  // IPv6 format like [::]:80 or [::1]:80
+                  const match = trimmed.match(/\[([^\]]*)\]:(\d+)/);
+                  if (match) {
+                    port = parseInt(match[2]);
+                    isLocalhost = match[1] === '::1';
+                  }
+                } else {
+                  // IPv4 format like 0.0.0.0:22 or 127.0.0.1:3306
+                  const parts = trimmed.split(':');
+                  if (parts.length >= 2) {
+                    port = parseInt(parts[parts.length - 1]);
+                    const addr = parts.slice(0, -1).join(':');
+                    isLocalhost = addr === '127.0.0.1' || addr === 'localhost';
+                  }
+                }
+
+                if (port && !isNaN(port)) {
+                  portSet.add(port);
+                  if (isLocalhost) {
+                    localhostSet.add(port);
+                  }
+                }
+              }
+
+              // A port is localhost-only if ALL its bindings are localhost
+              // We need to track if a port has any non-localhost binding
+              audit.openPorts = Array.from(portSet).sort((a, b) => a - b);
+
+              // Only mark as localhost-only if the port ONLY appears bound to localhost
+              for (const port of localhostSet) {
+                // Check if this port also appears bound to a non-localhost address
+                const hasPublicBinding = data.split('\n').some(line => {
+                  const trimmed = line.trim();
+                  if (!trimmed.endsWith(`:${port}`)) return false;
+                  // Check if it's bound to 0.0.0.0 or [::] or a specific public IP
+                  return trimmed.startsWith('0.0.0.0:') ||
+                         trimmed.startsWith('*:') ||
+                         trimmed.startsWith('[::]:') ||
+                         (!trimmed.startsWith('127.0.0.1:') && !trimmed.startsWith('[::1]:'));
+                });
+
+                if (!hasPublicBinding) {
+                  audit.localhostOnlyPorts.push(port);
+                }
+              }
             } else if (section === 'UPDATES') {
               audit.pendingUpdates = parseInt(data) || 0;
             } else if (section === 'SECURITY') {
@@ -156,19 +214,34 @@ function analyzeAudit(audit) {
   const isMailServer = audit.openPorts.some(p => secureMailPorts.includes(p)) ||
                        audit.openPorts.filter(p => mailPorts.includes(p)).length >= 2;
 
+  // Check which ports are localhost-only (already restricted)
+  const localhostOnlyPorts = audit.localhostOnlyPorts || [];
+
   for (const port of audit.openPorts) {
     const portName = PORT_DESCRIPTIONS[port] || `Port ${port}`;
+    const isLocalhostOnly = localhostOnlyPorts.includes(port);
 
     if (databasePorts.includes(port)) {
-      audit.findings.push({
-        severity: 'high',
-        category: 'ports',
-        port: port,
-        message: `${portName} (${port}) is exposed to the internet - should be localhost only`,
-        action: `restrict_port_${port}_localhost`
-      });
-      audit.recommendations.push(`Restrict ${portName} (port ${port}) to localhost only`);
-      deductions.ports += 15;
+      if (isLocalhostOnly) {
+        // Port is properly restricted to localhost - this is good
+        audit.findings.push({
+          severity: 'info',
+          category: 'ports',
+          port: port,
+          message: `${portName} (${port}) is properly restricted to localhost only`
+        });
+      } else {
+        // Port is exposed to the internet - this is bad
+        audit.findings.push({
+          severity: 'high',
+          category: 'ports',
+          port: port,
+          message: `${portName} (${port}) is exposed to the internet - should be localhost only`,
+          action: `restrict_port_${port}_localhost`
+        });
+        audit.recommendations.push(`Restrict ${portName} (port ${port}) to localhost only`);
+        deductions.ports += 15;
+      }
     } else if (riskyPorts.includes(port)) {
       audit.findings.push({
         severity: 'high',

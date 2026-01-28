@@ -192,7 +192,9 @@ export async function handleWebSocket(ws, req) {
         containerName,
         useDocker: USE_DOCKER,
         themeSelected: false,
-        welcomeHandled: false
+        welcomeHandled: false,
+        autoResponsePending: false,
+        lastAutoResponse: 0
       };
 
       // Handle PTY output
@@ -203,27 +205,75 @@ export async function handleWebSocket(ws, req) {
           session.buffer = session.buffer.slice(-50000);
         }
 
+        // Recent buffer for prompt detection (last 2000 chars)
+        const recentBuffer = session.buffer.slice(-2000).toLowerCase();
+        const now = Date.now();
+
+        // Debounce auto-responses (at least 500ms between responses)
+        const canAutoRespond = !session.autoResponsePending && (now - session.lastAutoResponse > 500);
+
         // Auto-respond to Claude's theme selection prompt
-        // Claude asks "Pick a theme:" with options - we auto-select option 1 (Dark)
-        if (!session.themeSelected && (
-          session.buffer.includes('Pick a theme') ||
-          session.buffer.includes('choose a theme') ||
-          session.buffer.includes('Select a theme')
+        // Various patterns Claude might use for theme selection
+        if (canAutoRespond && !session.themeSelected && (
+          recentBuffer.includes('pick a theme') ||
+          recentBuffer.includes('choose a theme') ||
+          recentBuffer.includes('select a theme') ||
+          recentBuffer.includes('which theme') ||
+          (recentBuffer.includes('theme') && recentBuffer.includes('1)') && recentBuffer.includes('2)'))
         )) {
           session.themeSelected = true;
-          console.log(`Auto-selecting theme for session ${sessionKey}`);
+          session.autoResponsePending = true;
+          console.log(`[Claude Session ${sessionKey}] Auto-selecting theme (Dark)`);
           setTimeout(() => {
-            session.pty.write('1\r'); // Select first theme option
-          }, 300);
+            session.pty.write('1\r'); // Select first theme option (usually Dark)
+            session.autoResponsePending = false;
+            session.lastAutoResponse = Date.now();
+          }, 400);
         }
 
-        // Also handle "Welcome to Claude" first-run prompts
-        if (!session.welcomeHandled && session.buffer.includes('Press Enter to continue')) {
+        // Handle "Welcome to Claude" first-run prompts
+        if (canAutoRespond && !session.welcomeHandled && (
+          recentBuffer.includes('press enter to continue') ||
+          recentBuffer.includes('press enter to start') ||
+          recentBuffer.includes('press any key')
+        )) {
           session.welcomeHandled = true;
-          console.log(`Auto-continuing welcome prompt for session ${sessionKey}`);
+          session.autoResponsePending = true;
+          console.log(`[Claude Session ${sessionKey}] Auto-continuing welcome prompt`);
           setTimeout(() => {
             session.pty.write('\r');
-          }, 300);
+            session.autoResponsePending = false;
+            session.lastAutoResponse = Date.now();
+          }, 400);
+        }
+
+        // Handle trust project prompt (Claude asks if you trust this project)
+        if (canAutoRespond && (
+          recentBuffer.includes('do you trust') ||
+          recentBuffer.includes('trust this') ||
+          (recentBuffer.includes('y/n') && recentBuffer.includes('trust'))
+        )) {
+          session.autoResponsePending = true;
+          console.log(`[Claude Session ${sessionKey}] Auto-accepting trust prompt`);
+          setTimeout(() => {
+            session.pty.write('y\r');
+            session.autoResponsePending = false;
+            session.lastAutoResponse = Date.now();
+          }, 400);
+        }
+
+        // Handle first-time setup prompts that might ask for confirmation
+        if (canAutoRespond && (
+          (recentBuffer.includes('continue') && recentBuffer.includes('y/n')) ||
+          (recentBuffer.includes('proceed') && recentBuffer.includes('y/n'))
+        )) {
+          session.autoResponsePending = true;
+          console.log(`[Claude Session ${sessionKey}] Auto-accepting continue prompt`);
+          setTimeout(() => {
+            session.pty.write('y\r');
+            session.autoResponsePending = false;
+            session.lastAutoResponse = Date.now();
+          }, 400);
         }
 
         // Send to all connected clients
@@ -305,6 +355,10 @@ export async function handleWebSocket(ws, req) {
           // Restart Claude session
           session.themeSelected = false;
           session.welcomeHandled = false;
+          session.autoResponsePending = false;
+          session.lastAutoResponse = 0;
+          session.buffer = ''; // Clear buffer for fresh detection
+          console.log(`[Claude Session ${sessionKey}] Restarting Claude`);
           session.pty.write('\x03'); // Ctrl+C
           setTimeout(() => {
             session.pty.write('claude\r');
