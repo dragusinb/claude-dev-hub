@@ -448,9 +448,61 @@ export function getSecurityActions() {
   return request('/security/actions');
 }
 
-export function executeSecurityAction(serverId, actionId) {
+export function executeSecurityAction(serverId, actionId, allowedIP = null) {
+  const body = { actionId };
+  if (allowedIP) {
+    body.allowedIP = allowedIP;
+  }
   return request(`/security/action/${serverId}`, {
     method: 'POST',
-    body: JSON.stringify({ actionId })
+    body: JSON.stringify(body)
   });
+}
+
+// ==================== CONTABO ====================
+
+export function getContaboInstances() {
+  return request('/contabo/instances');
+}
+
+export function getContaboInstance(id) {
+  return request(`/contabo/instances/${id}`);
+}
+
+export function startContaboInstance(id) {
+  return request(`/contabo/instances/${id}/start`, {
+    method: 'POST'
+  });
+}
+
+export function stopContaboInstance(id) {
+  return request(`/contabo/instances/${id}/stop`, {
+    method: 'POST'
+  });
+}
+
+export function restartContaboInstance(id) {
+  return request(`/contabo/instances/${id}/restart`, {
+    method: 'POST'
+  });
+}
+
+// ==================== LOG VIEWER ====================
+
+export function getLogFiles(serverId) {
+  return request(`/logs/servers/${serverId}/files`);
+}
+
+export function tailLogFile(serverId, file, lines = 100) {
+  return request(`/logs/servers/${serverId}/tail?file=${encodeURIComponent(file)}&lines=${lines}`);
+}
+
+export function searchLogFile(serverId, file, query, lines = 100) {
+  return request(`/logs/servers/${serverId}/search?file=${encodeURIComponent(file)}&query=${encodeURIComponent(query)}&lines=${lines}`);
+}
+
+export function downloadLogFile(serverId, file, lines = 10000) {
+  const token = getToken();
+  const url = `${API_BASE}/logs/servers/${serverId}/download?file=${encodeURIComponent(file)}&lines=${lines}`;
+  window.open(url, '_blank');
 }

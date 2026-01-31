@@ -18,6 +18,8 @@ import uptimeRoutes from './routes/uptime.js';
 import sslRoutes from './routes/ssl.js';
 import backupsRoutes from './routes/backups.js';
 import securityRoutes from './routes/security.js';
+import contaboRoutes from './routes/contabo.js';
+import logsRoutes from './routes/logs.js';
 import { initDatabase, getUserByEmail } from './models/database.js';
 import { handleWebSocket } from './services/claudeSession.js';
 import { startHealthCollector } from './services/healthCollector.js';
@@ -61,6 +63,8 @@ app.use('/api/uptime', authenticateToken, uptimeRoutes);
 app.use('/api/ssl', authenticateToken, sslRoutes);
 app.use('/api/backups', authenticateToken, backupsRoutes);
 app.use('/api/security', authenticateToken, securityRoutes);
+app.use('/api/contabo', authenticateToken, contaboRoutes);
+app.use('/api/logs', authenticateToken, logsRoutes);
 app.use('/api', authenticateToken, monitoringRoutes);
 
 // WebSocket for Claude sessions

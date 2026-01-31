@@ -265,12 +265,12 @@ function Settings() {
 
       {/* Info */}
       <div className="p-4 bg-slate-900 rounded-lg border border-slate-700">
-        <h3 className="font-medium mb-2">About Claude Dev Hub</h3>
+        <h3 className="font-medium mb-2">About CoffeePot DevOps</h3>
         <p className="text-sm text-slate-400">
-          Claude Dev Hub is a web-based development environment that lets you manage
-          multiple projects with AI assistance. Each project gets its own Claude
-          terminal session where you can interact with the AI to develop, debug,
-          and deploy your code.
+          CoffeePot DevOps is a web-based development and operations platform that lets you manage
+          servers, monitor SSL certificates, schedule backups, run security audits, and more.
+          Each project gets its own terminal session where you can interact with AI to develop,
+          debug, and deploy your code.
         </p>
         <p className="text-sm text-slate-500 mt-2">
           Version 1.0.0

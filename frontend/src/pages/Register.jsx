@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FolderGit2, UserPlus } from 'lucide-react';
+import { Coffee, UserPlus } from 'lucide-react';
 
 function Register() {
   const navigate = useNavigate();
@@ -60,8 +60,8 @@ function Register() {
       <div className="w-full max-w-md p-8">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <FolderGit2 className="w-12 h-12 text-orange-500" />
-            <h1 className="text-3xl font-bold">Claude Dev Hub</h1>
+            <Coffee className="w-12 h-12 text-orange-500" />
+            <h1 className="text-3xl font-bold">CoffeePot DevOps</h1>
           </div>
           <p className="text-slate-400">Create your account</p>
         </div>
@@ -141,7 +141,7 @@ function Register() {
         </p>
 
         <p className="text-center text-slate-500 text-sm mt-4">
-          Claude Dev Hub v1.0.0
+          CoffeePot DevOps v1.0.0
         </p>
       </div>
     </div>

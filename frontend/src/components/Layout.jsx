@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { FolderGit2, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck } from 'lucide-react';
+import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText } from 'lucide-react';
 import { logout, getUser } from '../services/auth';
 
 function Layout() {
@@ -15,6 +15,8 @@ function Layout() {
     { path: '/ssl', icon: Lock, label: 'SSL Monitor' },
     { path: '/backups', icon: Database, label: 'Backups' },
     { path: '/security', icon: ShieldCheck, label: 'Security' },
+    { path: '/contabo', icon: Cloud, label: 'Contabo' },
+    { path: '/logs', icon: FileText, label: 'Log Viewer' },
     { path: '/vault', icon: Shield, label: 'Vault' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
@@ -29,8 +31,8 @@ function Layout() {
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FolderGit2 className="w-6 h-6 text-orange-500" />
-          <span className="font-bold">Claude Dev Hub</span>
+          <Coffee className="w-6 h-6 text-orange-500" />
+          <span className="font-bold">CoffeePot DevOps</span>
         </div>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -58,8 +60,8 @@ function Layout() {
       `}>
         <div className="p-4 border-b border-slate-700 hidden lg:block">
           <div className="flex items-center gap-2">
-            <FolderGit2 className="w-8 h-8 text-orange-500" />
-            <span className="text-xl font-bold">Claude Dev Hub</span>
+            <Coffee className="w-8 h-8 text-orange-500" />
+            <span className="text-xl font-bold">CoffeePot DevOps</span>
           </div>
         </div>
 

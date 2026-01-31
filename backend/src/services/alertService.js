@@ -1,19 +1,58 @@
-import { getAllAlertSettings, getAlertSettings, addAlertHistory, getRecentAlert, getServerOwner } from '../models/database.js';
+import { getAllAlertSettings, getAlertSettings, addAlertHistory, getRecentAlert, getServerOwner, getDb } from '../models/database.js';
+import { decrypt } from './encryption.js';
 import https from 'https';
 import http from 'http';
 import nodemailer from 'nodemailer';
 
 // Create reusable transporter (lazy initialization)
 let transporter = null;
+let cachedSmtpConfig = null;
 
 function getSmtpConfig() {
-  return {
+  // Return cached config if available
+  if (cachedSmtpConfig) return cachedSmtpConfig;
+
+  // Try to get SMTP credentials from Vault
+  try {
+    const db = getDb();
+    const entry = db.prepare("SELECT * FROM vault WHERE name LIKE 'SMTP%' LIMIT 1").get();
+
+    if (entry) {
+      const username = decrypt(entry.encrypted_username);
+      const password = decrypt(entry.encrypted_password);
+      const url = decrypt(entry.encrypted_url);
+      const notes = decrypt(entry.encrypted_notes) || '';
+
+      // Parse port from notes if present (format: "Port: 587")
+      const portMatch = notes.match(/Port:\s*(\d+)/i);
+      const port = portMatch ? parseInt(portMatch[1]) : 587;
+
+      if (username && password && url) {
+        console.log('[SMTP] Using credentials from Vault');
+        cachedSmtpConfig = {
+          host: url,
+          port: port,
+          user: username,
+          pass: password,
+          from: username
+        };
+        return cachedSmtpConfig;
+      }
+    }
+  } catch (err) {
+    console.error('[SMTP] Failed to get credentials from vault:', err.message);
+  }
+
+  // Fallback to environment variables
+  console.log('[SMTP] Using credentials from environment variables');
+  cachedSmtpConfig = {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 587,
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || process.env.SMTP_USER || ''
   };
+  return cachedSmtpConfig;
 }
 
 function getTransporter() {
@@ -99,12 +138,12 @@ async function sendEmail(to, subject, message) {
     const htmlMessage = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1e293b; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-          <h2 style="margin: 0; color: #f97316;">Claude Dev Hub Alert</h2>
+          <h2 style="margin: 0; color: #f97316;">CoffeePot DevOps Alert</h2>
         </div>
         <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;">
           <p style="font-size: 16px; color: #334155; margin: 0 0 15px 0;">${message}</p>
           <p style="font-size: 12px; color: #64748b; margin: 0;">
-            Sent from Claude Dev Hub Monitoring<br>
+            Sent from CoffeePot DevOps Monitoring<br>
             ${new Date().toLocaleString()}
           </p>
         </div>
@@ -129,18 +168,18 @@ async function sendEmail(to, subject, message) {
 
 // Test email function - can be called from API
 export async function sendTestEmail(to) {
-  const subject = '[Test] Claude Dev Hub Alert System';
-  const message = 'This is a test alert from Claude Dev Hub. If you received this email, your alert notifications are working correctly!';
+  const subject = '[Test] CoffeePot DevOps Alert System';
+  const message = 'This is a test alert from CoffeePot DevOps. If you received this email, your alert notifications are working correctly!';
 
   const htmlMessage = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #1e293b; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-        <h2 style="margin: 0; color: #f97316;">Claude Dev Hub Alert</h2>
+        <h2 style="margin: 0; color: #f97316;">CoffeePot DevOps Alert</h2>
       </div>
       <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;">
         <p style="font-size: 16px; color: #334155; margin: 0 0 15px 0;">${message}</p>
         <p style="font-size: 12px; color: #64748b; margin: 0;">
-          Sent from Claude Dev Hub Monitoring<br>
+          Sent from CoffeePot DevOps Monitoring<br>
           ${new Date().toLocaleString()}
         </p>
       </div>
@@ -183,7 +222,7 @@ export async function sendTestEmail(to) {
     });
 
     const info = await testTransport.sendMail({
-      from: '"Claude Dev Hub" <alerts@claude-dev-hub.com>',
+      from: '"CoffeePot DevOps" <alerts@claude-dev-hub.com>',
       to: to,
       subject: subject,
       text: message,

@@ -11,6 +11,8 @@ import Uptime from './pages/Uptime';
 import SSLMonitor from './pages/SSLMonitor';
 import Backups from './pages/Backups';
 import Security from './pages/Security';
+import Contabo from './pages/Contabo';
+import Logs from './pages/Logs';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { isAuthenticated, checkAuth } from './services/auth';
@@ -66,6 +68,8 @@ function App() {
         <Route path="ssl" element={<SSLMonitor />} />
         <Route path="backups" element={<Backups />} />
         <Route path="security" element={<Security />} />
+        <Route path="contabo" element={<Contabo />} />
+        <Route path="logs" element={<Logs />} />
         <Route path="vault" element={<Vault />} />
         <Route path="settings" element={<Settings />} />
       </Route>

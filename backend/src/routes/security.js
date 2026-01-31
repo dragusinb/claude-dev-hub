@@ -1,5 +1,6 @@
 import express from 'express';
 import { Client } from 'ssh2';
+import { exec } from 'child_process';
 import {
   getSecurityAudits,
   getLatestSecurityAudit,
@@ -9,30 +10,33 @@ import {
 } from '../models/database.js';
 import { runSecurityAudit } from '../services/securityAuditor.js';
 
+// Wait for apt lock helper - waits up to 60 seconds for apt lock to be released
+const APT_WAIT = 'while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do echo "Waiting for apt lock..."; sleep 5; done';
+
 // Define fixable actions with their commands
 const SECURITY_ACTIONS = {
   install_security_updates: {
     name: 'Install Security Updates',
-    description: 'Install all pending security updates',
-    command: 'DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade',
+    description: 'Install all pending security updates (waits for apt lock if needed)',
+    command: `${APT_WAIT} && DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade`,
     category: 'updates'
   },
   install_all_updates: {
     name: 'Install All Updates',
-    description: 'Install all pending package updates',
-    command: 'DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade',
+    description: 'Install all pending package updates (waits for apt lock if needed)',
+    command: `${APT_WAIT} && DEBIAN_FRONTEND=noninteractive apt-get update && apt-get -y upgrade`,
     category: 'updates'
   },
   install_fail2ban: {
     name: 'Install Fail2Ban',
-    description: 'Install and enable fail2ban to protect against brute force attacks',
-    command: 'apt-get update && apt-get install -y fail2ban && systemctl enable fail2ban && systemctl start fail2ban',
+    description: 'Install and enable fail2ban to protect against brute force attacks (waits for apt lock if needed)',
+    command: `${APT_WAIT} && DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban && systemctl enable fail2ban && systemctl start fail2ban`,
     category: 'ssh'
   },
   enable_firewall: {
     name: 'Enable UFW Firewall',
     description: 'Enable UFW firewall with default deny incoming, allow SSH/HTTP/HTTPS',
-    command: 'apt-get install -y ufw && ufw default deny incoming && ufw default allow outgoing && ufw allow ssh && ufw allow http && ufw allow https && echo "y" | ufw enable',
+    command: `${APT_WAIT} && DEBIAN_FRONTEND=noninteractive apt-get install -y ufw && ufw default deny incoming && ufw default allow outgoing && ufw allow ssh && ufw allow http && ufw allow https && echo "y" | ufw enable`,
     category: 'firewall'
   },
   disable_root_password: {
@@ -55,8 +59,21 @@ const DATABASE_PORTS = [3306, 5432, 6379, 27017];
 // Check if UFW is enabled - prefix for port commands
 const UFW_CHECK = 'ufw status | grep -q "Status: active" || { echo "ERROR: UFW firewall is not enabled. Please enable the firewall first using the Enable UFW Firewall action."; exit 1; }';
 
+// Validate IP address format
+function isValidIP(ip) {
+  // IPv4 validation
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (ipv4Regex.test(ip)) {
+    const parts = ip.split('.').map(Number);
+    return parts.every(part => part >= 0 && part <= 255);
+  }
+  // IPv6 validation (simplified)
+  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^::1$/;
+  return ipv6Regex.test(ip);
+}
+
 // Generate dynamic port action
-function getPortAction(port, actionType = 'block') {
+function getPortAction(port, actionType = 'block', allowedIP = null) {
   const portName = PORT_NAMES[port] || `Port ${port}`;
   const isDbPort = DATABASE_PORTS.includes(port);
 
@@ -65,9 +82,21 @@ function getPortAction(port, actionType = 'block') {
       id: `allow_port_${port}`,
       name: `Allow ${portName}`,
       description: `Remove firewall restrictions and allow ${portName} (port ${port}) from anywhere. Requires UFW to be enabled.`,
-      command: `${UFW_CHECK} && ufw delete deny ${port} 2>/dev/null; ufw delete allow from 127.0.0.1 to any port ${port} 2>/dev/null; ufw allow ${port} && ufw reload`,
+      command: `${UFW_CHECK} && ufw delete deny ${port} >/dev/null 2>&1; ufw delete allow from 127.0.0.1 to any port ${port} >/dev/null 2>&1; ufw allow ${port} && ufw reload`,
       category: 'ports',
       isUndo: true
+    };
+  }
+
+  // Restrict to specific IP address
+  if (actionType === 'ip' && allowedIP) {
+    return {
+      id: `restrict_port_${port}_ip_${allowedIP}`,
+      name: `Restrict ${portName} to ${allowedIP}`,
+      description: `Allow ${portName} (port ${port}) only from ${allowedIP}. All other remote connections will be blocked. Requires UFW to be enabled.`,
+      command: `${UFW_CHECK} && ufw delete allow ${port} >/dev/null 2>&1; ufw deny ${port} >/dev/null 2>&1; ufw allow from ${allowedIP} to any port ${port} && ufw reload`,
+      category: 'ports',
+      undoAction: `allow_port_${port}`
     };
   }
 
@@ -76,7 +105,7 @@ function getPortAction(port, actionType = 'block') {
       id: `restrict_port_${port}_localhost`,
       name: `Restrict ${portName} to localhost`,
       description: `Allow ${portName} (port ${port}) only from localhost (127.0.0.1). Remote connections will be blocked. Requires UFW to be enabled.`,
-      command: `${UFW_CHECK} && ufw delete allow ${port} 2>/dev/null; ufw deny ${port} && ufw allow from 127.0.0.1 to any port ${port} && ufw reload`,
+      command: `${UFW_CHECK} && ufw delete allow ${port} >/dev/null 2>&1; ufw deny ${port} >/dev/null 2>&1; ufw allow from 127.0.0.1 to any port ${port} && ufw reload`,
       category: 'ports',
       undoAction: `allow_port_${port}`
     };
@@ -92,8 +121,42 @@ function getPortAction(port, actionType = 'block') {
   };
 }
 
-// Execute command on server via SSH
+// Execute command locally (for the server running the app)
+function executeLocally(command) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Command timeout'));
+    }, 300000); // 5 minute timeout
+
+    exec(command, { shell: '/bin/bash', maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      clearTimeout(timeout);
+      if (err && err.killed) {
+        reject(new Error('Command timeout'));
+        return;
+      }
+      resolve({ code: err ? err.code || 1 : 0, stdout, stderr });
+    });
+  });
+}
+
+// Check if server is the local machine
+function isLocalServer(server) {
+  // Check if it's marked as local or if host matches known local identifiers
+  return server.is_local === 1 ||
+         server.host === 'localhost' ||
+         server.host === '127.0.0.1' ||
+         server.name?.toLowerCase().includes('local') ||
+         server.name?.toLowerCase().includes('claude dev hub server');
+}
+
+// Execute command on server via SSH (or locally if it's the local server)
 function executeOnServer(server, command) {
+  // Check if this is the local server
+  if (isLocalServer(server)) {
+    console.log(`Executing command locally on ${server.name}`);
+    return executeLocally(command);
+  }
+
   return new Promise((resolve, reject) => {
     const conn = new Client();
     const timeout = setTimeout(() => {
@@ -326,7 +389,7 @@ router.post('/action/:serverId', async (req, res) => {
   try {
     const userId = req.user.id;
     const serverId = req.params.serverId;
-    const { actionId } = req.body;
+    const { actionId, allowedIP } = req.body;
 
     // Check for dynamic port actions
     let action;
@@ -336,6 +399,21 @@ router.post('/action/:serverId', async (req, res) => {
         return res.status(400).json({ error: 'Invalid port number' });
       }
       action = getPortAction(port, 'undo');
+    } else if (actionId.startsWith('restrict_port_') && actionId.includes('_ip_')) {
+      // Handle restrict to specific IP: restrict_port_8000_ip_192.168.1.1
+      const match = actionId.match(/^restrict_port_(\d+)_ip_(.+)$/);
+      if (!match) {
+        return res.status(400).json({ error: 'Invalid action format' });
+      }
+      const port = parseInt(match[1]);
+      const ip = match[2];
+      if (isNaN(port)) {
+        return res.status(400).json({ error: 'Invalid port number' });
+      }
+      if (!isValidIP(ip)) {
+        return res.status(400).json({ error: 'Invalid IP address format' });
+      }
+      action = getPortAction(port, 'ip', ip);
     } else if (actionId.startsWith('restrict_port_') && actionId.endsWith('_localhost')) {
       const port = parseInt(actionId.replace('restrict_port_', '').replace('_localhost', ''));
       if (isNaN(port)) {
@@ -348,6 +426,24 @@ router.post('/action/:serverId', async (req, res) => {
         return res.status(400).json({ error: 'Invalid port number' });
       }
       action = getPortAction(port, 'block');
+    } else if (actionId.startsWith('manage_port_')) {
+      // Generic port management - user must specify what to do via allowedIP or default to block
+      const port = parseInt(actionId.replace('manage_port_', ''));
+      if (isNaN(port)) {
+        return res.status(400).json({ error: 'Invalid port number' });
+      }
+      // If allowedIP is provided, restrict to that IP; otherwise block the port
+      if (allowedIP) {
+        if (allowedIP === 'localhost' || allowedIP === '127.0.0.1') {
+          action = getPortAction(port, 'localhost');
+        } else if (!isValidIP(allowedIP)) {
+          return res.status(400).json({ error: 'Invalid IP address format' });
+        } else {
+          action = getPortAction(port, 'ip', allowedIP);
+        }
+      } else {
+        action = getPortAction(port, 'block');
+      }
     } else {
       action = SECURITY_ACTIONS[actionId];
     }
@@ -362,13 +458,15 @@ router.post('/action/:serverId', async (req, res) => {
       return res.status(404).json({ error: 'Server not found' });
     }
 
-    // Check credentials
-    const hasCredentials = server.auth_type === 'password' ? !!server.password : !!server.private_key;
-    if (!hasCredentials) {
-      return res.status(400).json({ error: 'Server credentials not available' });
+    // Check credentials (skip for local servers)
+    if (!isLocalServer(server)) {
+      const hasCredentials = server.auth_type === 'password' ? !!server.password : !!server.private_key;
+      if (!hasCredentials) {
+        return res.status(400).json({ error: 'Server credentials not available' });
+      }
     }
 
-    console.log(`Executing security action "${action.name}" on ${server.name}`);
+    console.log(`Executing security action "${action.name}" on ${server.name}${isLocalServer(server) ? ' (local)' : ''}`);
 
     // Execute the command
     const result = await executeOnServer(server, action.command);

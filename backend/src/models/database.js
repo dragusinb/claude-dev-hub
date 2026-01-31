@@ -142,6 +142,8 @@ export function initDatabase() {
 
         CREATE INDEX IF NOT EXISTS idx_health_server_time ON server_health_history(server_id, created_at);
 
+        -- Network traffic columns will be added via migration
+
         CREATE TABLE IF NOT EXISTS alert_settings (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id TEXT NOT NULL,
@@ -366,6 +368,19 @@ function runMigrations() {
 
   // Migrate plain-text credentials to encrypted format
   migrateToEncrypted();
+
+  // Add network traffic columns to server_health_history if not exists
+  const healthCols = db.prepare("PRAGMA table_info(server_health_history)").all();
+  const hasNetworkRx = healthCols.some(col => col.name === 'network_rx_bytes');
+  if (!hasNetworkRx) {
+    console.log('Running migration: Adding network traffic columns to server_health_history');
+    db.exec(`
+      ALTER TABLE server_health_history ADD COLUMN network_rx_bytes INTEGER DEFAULT 0;
+      ALTER TABLE server_health_history ADD COLUMN network_tx_bytes INTEGER DEFAULT 0;
+      ALTER TABLE server_health_history ADD COLUMN network_rx_rate REAL DEFAULT 0;
+      ALTER TABLE server_health_history ADD COLUMN network_tx_rate REAL DEFAULT 0;
+    `);
+  }
 }
 
 // Check if a value looks like it's already encrypted (base64:base64:base64 format)
@@ -476,12 +491,14 @@ export function createServer(server) {
 }
 
 export function getServers(userId) {
-  return getDb().prepare('SELECT id, name, host, port, username, auth_type, deploy_path, created_at FROM servers WHERE user_id = ?').all(userId);
+  // Shared resource - all users can see all servers
+  return getDb().prepare('SELECT id, name, host, port, username, auth_type, deploy_path, created_at FROM servers ORDER BY name ASC').all();
 }
 
 // Get servers with decrypted credentials (for SSH operations)
 export function getServersWithCredentials(userId) {
-  const servers = getDb().prepare('SELECT * FROM servers WHERE user_id = ?').all(userId);
+  // Shared resource - all users can see all servers
+  const servers = getDb().prepare('SELECT * FROM servers').all();
   return servers.map(server => ({
     ...server,
     password: server.password ? decrypt(server.password) : null,
@@ -490,7 +507,8 @@ export function getServersWithCredentials(userId) {
 }
 
 export function getServer(id, userId) {
-  const server = getDb().prepare('SELECT * FROM servers WHERE id = ? AND user_id = ?').get(id, userId);
+  // Shared resource - all users can access any server
+  const server = getDb().prepare('SELECT * FROM servers WHERE id = ?').get(id);
   if (server) {
     // Decrypt sensitive fields
     server.password = server.password ? decrypt(server.password) : null;
@@ -670,11 +688,13 @@ export function createSvnCredential(cred) {
 }
 
 export function getSvnCredentials(userId) {
-  return getDb().prepare('SELECT id, name, url, username, created_at FROM svn_credentials WHERE user_id = ?').all(userId);
+  // Shared resource - all users can see all SVN credentials
+  return getDb().prepare('SELECT id, name, url, username, created_at FROM svn_credentials ORDER BY name ASC').all();
 }
 
 export function getSvnCredential(id, userId) {
-  const cred = getDb().prepare('SELECT * FROM svn_credentials WHERE id = ? AND user_id = ?').get(id, userId);
+  // Shared resource - all users can access any SVN credential
+  const cred = getDb().prepare('SELECT * FROM svn_credentials WHERE id = ?').get(id);
   if (cred) {
     // Decrypt password
     cred.password = cred.password ? decrypt(cred.password) : null;
@@ -683,14 +703,15 @@ export function getSvnCredential(id, userId) {
 }
 
 export function deleteSvnCredential(id, userId) {
-  return getDb().prepare('DELETE FROM svn_credentials WHERE id = ? AND user_id = ?').run(id, userId);
+  // Shared resource - all users can delete
+  return getDb().prepare('DELETE FROM svn_credentials WHERE id = ?').run(id);
 }
 
 // Server health history operations
 export function addServerHealthHistory(health) {
   const stmt = getDb().prepare(`
-    INSERT INTO server_health_history (server_id, cpu, memory_used, memory_total, memory_percent, disk_used, disk_total, disk_percent, load_one, load_five, load_fifteen)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO server_health_history (server_id, cpu, memory_used, memory_total, memory_percent, disk_used, disk_total, disk_percent, load_one, load_five, load_fifteen, network_rx_bytes, network_tx_bytes, network_rx_rate, network_tx_rate)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   return stmt.run(
     health.serverId,
@@ -703,7 +724,11 @@ export function addServerHealthHistory(health) {
     health.diskPercent,
     health.loadOne,
     health.loadFive,
-    health.loadFifteen
+    health.loadFifteen,
+    health.networkRxBytes || 0,
+    health.networkTxBytes || 0,
+    health.networkRxRate || 0,
+    health.networkTxRate || 0
   );
 }
 
@@ -719,6 +744,16 @@ export function getServerHealthHistory(serverId, hours = 24) {
 export function cleanupOldHealthHistory(daysToKeep = 7) {
   const cutoff = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000).toISOString();
   return getDb().prepare('DELETE FROM server_health_history WHERE created_at < ?').run(cutoff);
+}
+
+// Get last health record for a server (used for network rate calculation)
+export function getLastHealthRecord(serverId) {
+  return getDb().prepare(`
+    SELECT * FROM server_health_history
+    WHERE server_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(serverId);
 }
 
 export function getAllServersForMonitoring() {
@@ -840,15 +875,17 @@ export function createVaultEntry(entry) {
 }
 
 export function getVaultEntries(userId) {
+  // Shared resource - all users can see all vault entries
   return getDb().prepare(`
     SELECT id, name, category, created_at, updated_at
-    FROM vault WHERE user_id = ?
+    FROM vault
     ORDER BY name ASC
-  `).all(userId);
+  `).all();
 }
 
 export function getVaultEntry(id, userId) {
-  return getDb().prepare('SELECT * FROM vault WHERE id = ? AND user_id = ?').get(id, userId);
+  // Shared resource - all users can access any vault entry
+  return getDb().prepare('SELECT * FROM vault WHERE id = ?').get(id);
 }
 
 export function updateVaultEntry(id, userId, updates) {
@@ -969,21 +1006,24 @@ export function createSSLCertificate(cert) {
   return stmt.run(cert.id, cert.userId, cert.domain, cert.port || 443, cert.enabled !== false ? 1 : 0, cert.alertDays || 30);
 }
 
-// Get all SSL certificates for a user
+// Get all SSL certificates (shared resource)
 export function getSSLCertificates(userId) {
+  // Shared resource - all users can see all certificates
   return getDb().prepare(`
-    SELECT * FROM ssl_certificates WHERE user_id = ? ORDER BY domain ASC
-  `).all(userId);
+    SELECT * FROM ssl_certificates ORDER BY domain ASC
+  `).all();
 }
 
-// Get SSL certificate by ID
+// Get SSL certificate by ID (shared resource)
 export function getSSLCertificate(id, userId) {
-  return getDb().prepare('SELECT * FROM ssl_certificates WHERE id = ? AND user_id = ?').get(id, userId);
+  // Shared resource - all users can access any certificate
+  return getDb().prepare('SELECT * FROM ssl_certificates WHERE id = ?').get(id);
 }
 
 // Get SSL certificate by domain (for duplicate check)
 export function getSSLCertificateByDomain(domain, port, userId) {
-  return getDb().prepare('SELECT * FROM ssl_certificates WHERE domain = ? AND port = ? AND user_id = ?').get(domain, port, userId);
+  // Shared resource - check across all users
+  return getDb().prepare('SELECT * FROM ssl_certificates WHERE domain = ? AND port = ?').get(domain, port);
 }
 
 // Update SSL certificate
@@ -1038,18 +1078,19 @@ export function createBackupJob(job) {
 
 // Get backup jobs for a user
 export function getBackupJobs(userId) {
+  // Shared resource - all users can see all backup jobs
   return getDb().prepare(`
     SELECT bj.*, s.name as server_name, s.host as server_host
     FROM backup_jobs bj
     LEFT JOIN servers s ON bj.server_id = s.id
-    WHERE bj.user_id = ?
     ORDER BY bj.name ASC
-  `).all(userId);
+  `).all();
 }
 
-// Get backup job by ID (with decrypted password)
+// Get backup job by ID (with decrypted password) - shared resource
 export function getBackupJob(id, userId) {
-  const job = getDb().prepare('SELECT * FROM backup_jobs WHERE id = ? AND user_id = ?').get(id, userId);
+  // Shared resource - all users can access any backup job
+  const job = getDb().prepare('SELECT * FROM backup_jobs WHERE id = ?').get(id);
   if (job && job.database_password) {
     job.database_password = decrypt(job.database_password);
   }
@@ -1078,16 +1119,18 @@ export function updateBackupJob(id, userId, updates) {
 
   if (fields.length === 0) return { changes: 0 };
 
+  // Shared resource - all users can update any backup job
   const stmt = getDb().prepare(`
     UPDATE backup_jobs SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND user_id = ?
+    WHERE id = ?
   `);
-  return stmt.run(...values, id, userId);
+  return stmt.run(...values, id);
 }
 
-// Delete backup job
+// Delete backup job - shared resource
 export function deleteBackupJob(id, userId) {
-  return getDb().prepare('DELETE FROM backup_jobs WHERE id = ? AND user_id = ?').run(id, userId);
+  // Shared resource - all users can delete any backup job
+  return getDb().prepare('DELETE FROM backup_jobs WHERE id = ?').run(id);
 }
 
 // Get due backup jobs
@@ -1158,12 +1201,13 @@ export function addSecurityAudit(audit) {
   );
 }
 
-// Get latest security audit for a server
+// Get latest security audit for a server (shared resource)
 export function getLatestSecurityAudit(serverId, userId) {
+  // Shared resource - all users can see audits
   const audit = getDb().prepare(`
-    SELECT * FROM security_audits WHERE server_id = ? AND user_id = ?
+    SELECT * FROM security_audits WHERE server_id = ?
     ORDER BY created_at DESC LIMIT 1
-  `).get(serverId, userId);
+  `).get(serverId);
 
   if (audit) {
     audit.open_ports = JSON.parse(audit.open_ports || '[]');
@@ -1173,16 +1217,16 @@ export function getLatestSecurityAudit(serverId, userId) {
   return audit;
 }
 
-// Get all security audits for a user
+// Get all security audits (shared resource)
 export function getSecurityAudits(userId, limit = 50) {
+  // Shared resource - all users can see all audits
   const audits = getDb().prepare(`
     SELECT sa.*, s.name as server_name, s.host as server_host
     FROM security_audits sa
     LEFT JOIN servers s ON sa.server_id = s.id
-    WHERE sa.user_id = ?
     ORDER BY sa.created_at DESC
     LIMIT ?
-  `).all(userId, limit);
+  `).all(limit);
 
   return audits.map(audit => ({
     ...audit,
