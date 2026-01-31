@@ -40,14 +40,21 @@ function DNS() {
 
   async function checkCloudflare() {
     setCfLoading(true);
+    setError(null);
     try {
+      console.log('[DNS] Checking Cloudflare status...');
       const status = await getCloudflareStatus();
+      console.log('[DNS] Cloudflare status response:', status);
       setCfConnected(status.connected);
       if (status.connected) {
         loadZones();
+      } else if (status.error) {
+        setError(`Cloudflare: ${status.error}`);
       }
     } catch (err) {
+      console.error('[DNS] Cloudflare check error:', err);
       setCfConnected(false);
+      setError(`Failed to check Cloudflare: ${err.message}`);
     } finally {
       setCfLoading(false);
     }
@@ -228,6 +235,11 @@ function DNS() {
               <Cloud className="w-16 h-16 mx-auto mb-4 text-slate-500 opacity-50" />
               <h2 className="text-xl font-bold mb-2">Cloudflare Not Connected</h2>
               <p className="text-slate-400 mb-4">Add your Cloudflare API token to the Vault to manage DNS.</p>
+              {error && (
+                <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-3 mb-4 max-w-md mx-auto">
+                  <p className="text-red-400 text-sm">{error}</p>
+                </div>
+              )}
               <button
                 onClick={checkCloudflare}
                 className="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
