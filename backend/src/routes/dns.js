@@ -526,14 +526,14 @@ router.get('/cloudflare/status', async (req, res) => {
       return res.json({ connected: false, error: 'No API token configured' });
     }
 
-    console.log('[CF DEBUG] Calling Cloudflare API to verify token...');
-    const data = await cloudflareRequest('/user/tokens/verify');
-    console.log('[CF DEBUG] Cloudflare API response:', JSON.stringify(data));
+    // Use zones endpoint to verify connection (works with DNS-only tokens)
+    console.log('[CF DEBUG] Calling Cloudflare API to list zones...');
+    const data = await cloudflareRequest('/zones?per_page=1');
+    console.log('[CF DEBUG] Cloudflare API response: success');
 
     res.json({
       connected: true,
-      status: data.result?.status,
-      expiresOn: data.result?.expires_on
+      zoneCount: data.result_info?.total_count || 0
     });
   } catch (err) {
     console.error('[CF DEBUG] Error in /cloudflare/status:', err.message, err.stack);
