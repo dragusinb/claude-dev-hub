@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText } from 'lucide-react';
+import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText, Rocket } from 'lucide-react';
 import { logout, getUser } from '../services/auth';
 
 function Layout() {
@@ -17,6 +17,7 @@ function Layout() {
     { path: '/security', icon: ShieldCheck, label: 'Security' },
     { path: '/contabo', icon: Cloud, label: 'Contabo' },
     { path: '/logs', icon: FileText, label: 'Log Viewer' },
+    { path: '/deployments', icon: Rocket, label: 'Deployments' },
     { path: '/vault', icon: Shield, label: 'Vault' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];

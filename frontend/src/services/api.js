@@ -506,3 +506,52 @@ export function downloadLogFile(serverId, file, lines = 10000) {
   const url = `${API_BASE}/logs/servers/${serverId}/download?file=${encodeURIComponent(file)}&lines=${lines}`;
   window.open(url, '_blank');
 }
+
+// ==================== DEPLOYMENT PIPELINE ====================
+
+export function getDeploymentPipelines() {
+  return request('/deployments/pipelines');
+}
+
+export function getDeploymentPipeline(id) {
+  return request(`/deployments/pipelines/${id}`);
+}
+
+export function createDeploymentPipeline(data) {
+  return request('/deployments/pipelines', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export function updateDeploymentPipeline(id, data) {
+  return request(`/deployments/pipelines/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  });
+}
+
+export function deleteDeploymentPipeline(id) {
+  return request(`/deployments/pipelines/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function triggerDeployment(pipelineId, triggeredBy = 'manual') {
+  return request(`/deployments/pipelines/${pipelineId}/run`, {
+    method: 'POST',
+    body: JSON.stringify({ triggeredBy })
+  });
+}
+
+export function getDeploymentRuns(pipelineId, limit = 20) {
+  return request(`/deployments/pipelines/${pipelineId}/runs?limit=${limit}`);
+}
+
+export function getRecentDeploymentRuns(limit = 50) {
+  return request(`/deployments/runs?limit=${limit}`);
+}
+
+export function getDeploymentRun(id) {
+  return request(`/deployments/runs/${id}`);
+}

@@ -304,6 +304,47 @@ export function initDatabase() {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        -- Deployment Pipeline tables
+        CREATE TABLE IF NOT EXISTS deployment_pipelines (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          project_id TEXT,
+          server_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          enabled INTEGER DEFAULT 1,
+          pre_deploy_script TEXT,
+          deploy_script TEXT NOT NULL,
+          post_deploy_script TEXT,
+          rollback_script TEXT,
+          notify_on_success INTEGER DEFAULT 0,
+          notify_on_failure INTEGER DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id),
+          FOREIGN KEY (project_id) REFERENCES projects(id),
+          FOREIGN KEY (server_id) REFERENCES servers(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS deployment_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pipeline_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          started_at DATETIME,
+          finished_at DATETIME,
+          duration_seconds INTEGER,
+          pre_deploy_output TEXT,
+          deploy_output TEXT,
+          post_deploy_output TEXT,
+          error_message TEXT,
+          triggered_by TEXT DEFAULT 'manual',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (pipeline_id) REFERENCES deployment_pipelines(id),
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_deployment_runs_pipeline ON deployment_runs(pipeline_id, created_at);
       `);
 
       // Run migrations for existing databases
@@ -1266,4 +1307,159 @@ export function upsertSecurityAuditSettings(userId, settings) {
       settings.scoreThreshold || 70, settings.alertOnCritical ? 1 : 0
     );
   }
+}
+
+// ==================== DEPLOYMENT PIPELINE ====================
+
+// Create deployment pipeline
+export function createDeploymentPipeline(pipeline) {
+  const stmt = getDb().prepare(`
+    INSERT INTO deployment_pipelines (id, user_id, project_id, server_id, name, enabled,
+      pre_deploy_script, deploy_script, post_deploy_script, rollback_script,
+      notify_on_success, notify_on_failure)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  return stmt.run(
+    pipeline.id, pipeline.userId, pipeline.projectId || null, pipeline.serverId,
+    pipeline.name, pipeline.enabled !== false ? 1 : 0,
+    pipeline.preDeployScript || null, pipeline.deployScript,
+    pipeline.postDeployScript || null, pipeline.rollbackScript || null,
+    pipeline.notifyOnSuccess ? 1 : 0, pipeline.notifyOnFailure !== false ? 1 : 0
+  );
+}
+
+// Get all deployment pipelines (shared resource)
+export function getDeploymentPipelines(userId) {
+  return getDb().prepare(`
+    SELECT dp.*, s.name as server_name, s.host as server_host, p.name as project_name
+    FROM deployment_pipelines dp
+    LEFT JOIN servers s ON dp.server_id = s.id
+    LEFT JOIN projects p ON dp.project_id = p.id
+    ORDER BY dp.name ASC
+  `).all();
+}
+
+// Get deployment pipeline by ID (shared resource)
+export function getDeploymentPipeline(id, userId) {
+  return getDb().prepare(`
+    SELECT dp.*, s.name as server_name, s.host as server_host, p.name as project_name
+    FROM deployment_pipelines dp
+    LEFT JOIN servers s ON dp.server_id = s.id
+    LEFT JOIN projects p ON dp.project_id = p.id
+    WHERE dp.id = ?
+  `).get(id);
+}
+
+// Update deployment pipeline
+export function updateDeploymentPipeline(id, userId, updates) {
+  const allowedFields = ['name', 'project_id', 'server_id', 'enabled', 'pre_deploy_script',
+    'deploy_script', 'post_deploy_script', 'rollback_script', 'notify_on_success', 'notify_on_failure'];
+  const fields = [];
+  const values = [];
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+      fields.push(`${key} = ?`);
+      values.push(value);
+    }
+  }
+
+  if (fields.length === 0) return { changes: 0 };
+
+  const stmt = getDb().prepare(`
+    UPDATE deployment_pipelines SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  return stmt.run(...values, id);
+}
+
+// Delete deployment pipeline
+export function deleteDeploymentPipeline(id, userId) {
+  // First delete all runs for this pipeline
+  getDb().prepare('DELETE FROM deployment_runs WHERE pipeline_id = ?').run(id);
+  return getDb().prepare('DELETE FROM deployment_pipelines WHERE id = ?').run(id);
+}
+
+// Create deployment run
+export function createDeploymentRun(run) {
+  const stmt = getDb().prepare(`
+    INSERT INTO deployment_runs (pipeline_id, user_id, status, started_at, triggered_by)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(run.pipelineId, run.userId, 'running', new Date().toISOString(), run.triggeredBy || 'manual');
+  return result.lastInsertRowid;
+}
+
+// Update deployment run
+export function updateDeploymentRun(id, updates) {
+  const allowedFields = ['status', 'finished_at', 'duration_seconds', 'pre_deploy_output',
+    'deploy_output', 'post_deploy_output', 'error_message'];
+  const fields = [];
+  const values = [];
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+      fields.push(`${key} = ?`);
+      values.push(value);
+    }
+  }
+
+  if (fields.length === 0) return { changes: 0 };
+
+  const stmt = getDb().prepare(`UPDATE deployment_runs SET ${fields.join(', ')} WHERE id = ?`);
+  return stmt.run(...values, id);
+}
+
+// Get deployment runs for a pipeline
+export function getDeploymentRuns(pipelineId, limit = 20) {
+  return getDb().prepare(`
+    SELECT dr.*, u.name as user_name, u.email as user_email
+    FROM deployment_runs dr
+    LEFT JOIN users u ON dr.user_id = u.id
+    WHERE dr.pipeline_id = ?
+    ORDER BY dr.created_at DESC
+    LIMIT ?
+  `).all(pipelineId, limit);
+}
+
+// Get deployment run by ID
+export function getDeploymentRun(id) {
+  return getDb().prepare(`
+    SELECT dr.*, dp.name as pipeline_name, dp.server_id, s.name as server_name, s.host as server_host,
+           u.name as user_name, u.email as user_email
+    FROM deployment_runs dr
+    LEFT JOIN deployment_pipelines dp ON dr.pipeline_id = dp.id
+    LEFT JOIN servers s ON dp.server_id = s.id
+    LEFT JOIN users u ON dr.user_id = u.id
+    WHERE dr.id = ?
+  `).get(id);
+}
+
+// Get recent deployment runs across all pipelines
+export function getRecentDeploymentRuns(userId, limit = 50) {
+  return getDb().prepare(`
+    SELECT dr.*, dp.name as pipeline_name, s.name as server_name, u.name as user_name
+    FROM deployment_runs dr
+    LEFT JOIN deployment_pipelines dp ON dr.pipeline_id = dp.id
+    LEFT JOIN servers s ON dp.server_id = s.id
+    LEFT JOIN users u ON dr.user_id = u.id
+    ORDER BY dr.created_at DESC
+    LIMIT ?
+  `).all(limit);
+}
+
+// Get pipeline with server credentials for execution
+export function getPipelineForExecution(id) {
+  const pipeline = getDb().prepare(`
+    SELECT dp.*, s.host, s.port, s.username, s.auth_type, s.password, s.private_key
+    FROM deployment_pipelines dp
+    LEFT JOIN servers s ON dp.server_id = s.id
+    WHERE dp.id = ?
+  `).get(id);
+
+  if (pipeline) {
+    pipeline.password = pipeline.password ? decrypt(pipeline.password) : null;
+    pipeline.private_key = pipeline.private_key ? decrypt(pipeline.private_key) : null;
+  }
+  return pipeline;
 }
