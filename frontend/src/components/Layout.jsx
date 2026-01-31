@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText, Rocket, DollarSign, Timer } from 'lucide-react';
+import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText, Rocket, DollarSign, Timer, Globe } from 'lucide-react';
 import { logout, getUser } from '../services/auth';
 
 function Layout() {
@@ -20,6 +20,7 @@ function Layout() {
     { path: '/deployments', icon: Rocket, label: 'Deployments' },
     { path: '/costs', icon: DollarSign, label: 'Costs' },
     { path: '/cron', icon: Timer, label: 'Cron Jobs' },
+    { path: '/dns', icon: Globe, label: 'DNS' },
     { path: '/vault', icon: Shield, label: 'Vault' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];

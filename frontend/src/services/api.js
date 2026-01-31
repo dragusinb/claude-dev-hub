@@ -586,3 +586,34 @@ export function toggleCronJob(serverId, rawLine, enabled) {
 export function getCronPresets() {
   return request('/cron/presets');
 }
+
+// ==================== DNS MANAGER ====================
+
+export function dnsLookup(domain) {
+  return request(`/dns/lookup?domain=${encodeURIComponent(domain)}`);
+}
+
+export function dnsPropagation(domain, type = 'A') {
+  return request(`/dns/propagation?domain=${encodeURIComponent(domain)}&type=${type}`);
+}
+
+export function getDnsDomains() {
+  return request('/dns/domains');
+}
+
+export function addDnsDomain(domain, notes) {
+  return request('/dns/domains', {
+    method: 'POST',
+    body: JSON.stringify({ domain, notes })
+  });
+}
+
+export function deleteDnsDomain(id) {
+  return request(`/dns/domains/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function getDnsDomainRecords(id) {
+  return request(`/dns/domains/${id}/records`);
+}
