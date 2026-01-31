@@ -98,6 +98,11 @@ function SSLMonitor() {
     return 'border-green-500';
   }
 
+  function getFaviconUrl(domain) {
+    // Use Google's favicon service - reliable and fast
+    return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+  }
+
   function getStatusBadge(cert) {
     if (cert.last_error) {
       return (
@@ -260,9 +265,17 @@ function SSLMonitor() {
               className={`bg-slate-800 rounded-xl p-4 border-l-4 ${getStatusColor(cert.days_until_expiry)}`}
             >
               <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-medium text-lg">{cert.domain}</h3>
-                  <div className="text-sm text-slate-400">Port {cert.port}</div>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={getFaviconUrl(cert.domain)}
+                    alt=""
+                    className="w-8 h-8 rounded bg-slate-700"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div>
+                    <h3 className="font-medium text-lg">{cert.domain}</h3>
+                    <div className="text-sm text-slate-400">Port {cert.port}</div>
+                  </div>
                 </div>
                 {getStatusBadge(cert)}
               </div>
@@ -479,12 +492,20 @@ function SSLMonitor() {
                                   isAdded ? 'bg-green-900/30 border border-green-700' : 'bg-slate-900'
                                 } ${addingDomain === '__all__' && !isAdded ? 'opacity-50' : ''}`}
                               >
-                                <div>
-                                  <div className="font-medium flex items-center gap-2">
-                                    {s.domain}
-                                    {isAdded && <CheckCircle className="w-4 h-4 text-green-500" />}
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={getFaviconUrl(s.domain)}
+                                    alt=""
+                                    className="w-6 h-6 rounded bg-slate-700"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                  />
+                                  <div>
+                                    <div className="font-medium flex items-center gap-2">
+                                      {s.domain}
+                                      {isAdded && <CheckCircle className="w-4 h-4 text-green-500" />}
+                                    </div>
+                                    <div className="text-xs text-slate-500">from {s.serverName}</div>
                                   </div>
-                                  <div className="text-xs text-slate-500">from {s.serverName}</div>
                                 </div>
                                 {isAdded ? (
                                   <span className="text-green-400 text-sm">Added</span>

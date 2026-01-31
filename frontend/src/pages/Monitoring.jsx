@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, Server, Cpu, HardDrive, Clock, RefreshCw, Loader2, AlertCircle, TrendingUp, Bell, Settings } from 'lucide-react';
+import { Activity, Server, Cpu, HardDrive, Clock, RefreshCw, Loader2, AlertCircle, TrendingUp, Bell, Settings, Wifi } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { getServers, getServerHealth, getServerHealthHistory, getActivityLog, getDeployHistory, getAlertSettings, updateAlertSettings, getAlertHistory } from '../services/api';
 
@@ -78,7 +78,10 @@ function Monitoring() {
           cpu: h.cpu,
           memory: h.memory_percent,
           disk: h.disk_percent,
-          load: h.load_one
+          load: h.load_one,
+          // Convert bytes/s to KB/s for better readability
+          networkRx: (h.network_rx_rate || 0) / 1024,
+          networkTx: (h.network_tx_rate || 0) / 1024
         }));
         setHistoryData(prev => ({ ...prev, [serverId]: formattedHistory }));
       }
@@ -401,24 +404,59 @@ function Monitoring() {
                               <p>No history data yet</p>
                             </div>
                           ) : (
-                            <div className="h-64">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={serverHistory}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                  <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} domain={[0, 100]} />
-                                  <Tooltip
-                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                                    labelStyle={{ color: '#e2e8f0' }}
-                                    formatter={(value, name) => [`${value?.toFixed(1)}%`, name]}
-                                    labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTime || label}
-                                  />
-                                  <Legend />
-                                  <Line type="monotone" dataKey="cpu" name="CPU" stroke="#f97316" strokeWidth={2} dot={false} />
-                                  <Line type="monotone" dataKey="memory" name="Memory" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                                  <Line type="monotone" dataKey="disk" name="Disk" stroke="#22c55e" strokeWidth={2} dot={false} />
-                                </LineChart>
-                              </ResponsiveContainer>
+                            <div className="space-y-6">
+                              {/* CPU/Memory/Disk Chart */}
+                              <div>
+                                <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
+                                  <Cpu className="w-4 h-4" />
+                                  CPU / Memory / Disk Usage
+                                </h4>
+                                <div className="h-64">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={serverHistory}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                      <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                                      <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} domain={[0, 100]} unit="%" />
+                                      <Tooltip
+                                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                                        labelStyle={{ color: '#e2e8f0' }}
+                                        formatter={(value, name) => [`${value?.toFixed(1)}%`, name]}
+                                        labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTime || label}
+                                      />
+                                      <Legend />
+                                      <Line type="monotone" dataKey="cpu" name="CPU" stroke="#f97316" strokeWidth={2} dot={false} />
+                                      <Line type="monotone" dataKey="memory" name="Memory" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                                      <Line type="monotone" dataKey="disk" name="Disk" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+
+                              {/* Network Traffic Chart */}
+                              <div>
+                                <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
+                                  <Wifi className="w-4 h-4" />
+                                  Network Traffic (KB/s)
+                                </h4>
+                                <div className="h-48">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={serverHistory}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                      <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                                      <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+                                      <Tooltip
+                                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                                        labelStyle={{ color: '#e2e8f0' }}
+                                        formatter={(value, name) => [`${value?.toFixed(2)} KB/s`, name]}
+                                        labelFormatter={(label, payload) => payload?.[0]?.payload?.fullTime || label}
+                                      />
+                                      <Legend />
+                                      <Line type="monotone" dataKey="networkRx" name="Download (RX)" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                                      <Line type="monotone" dataKey="networkTx" name="Upload (TX)" stroke="#ec4899" strokeWidth={2} dot={false} />
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>

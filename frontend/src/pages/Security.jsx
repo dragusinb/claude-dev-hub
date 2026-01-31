@@ -14,6 +14,8 @@ function Security() {
   const [actionModal, setActionModal] = useState(null);
   const [actionRunning, setActionRunning] = useState(false);
   const [actionResult, setActionResult] = useState(null);
+  const [portActionType, setPortActionType] = useState('block'); // 'block', 'localhost', 'ip'
+  const [allowedIP, setAllowedIP] = useState('');
 
   useEffect(() => {
     loadData();
@@ -37,11 +39,11 @@ function Security() {
     }
   }
 
-  async function executeAction(serverId, actionId) {
+  async function executeAction(serverId, actionId, customAllowedIP = null) {
     try {
       setActionRunning(true);
       setActionResult(null);
-      const result = await api.executeSecurityAction(serverId, actionId);
+      const result = await api.executeSecurityAction(serverId, actionId, customAllowedIP);
 
       // After successful action, run a new audit to update findings/score
       if (result.success) {
@@ -121,6 +123,15 @@ function Security() {
               name: `Block Port ${port}`,
               description: `Completely block port ${port} using UFW firewall`,
               command: `ufw deny ${port} && ufw reload`
+            };
+          } else if (!action && finding.action.startsWith('manage_port_')) {
+            const port = finding.action.replace('manage_port_', '');
+            action = {
+              id: finding.action,
+              name: `Manage Port ${port}`,
+              description: `Choose how to restrict access to port ${port}: block completely, allow only localhost, or allow from a specific IP.`,
+              isPortManagement: true,
+              port: parseInt(port)
             };
           }
 
@@ -432,7 +443,11 @@ function Security() {
                                         <div className="text-xs text-slate-400">{action.reason}</div>
                                       </div>
                                       <button
-                                        onClick={() => setActionModal({ serverId: server.id, serverName: server.name, action })}
+                                        onClick={() => {
+                                          setPortActionType('block');
+                                          setAllowedIP('');
+                                          setActionModal({ serverId: server.id, serverName: server.name, action });
+                                        }}
                                         className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded text-sm transition-colors"
                                       >
                                         <Play className="w-3 h-3" />
@@ -489,12 +504,77 @@ function Security() {
                 <div className="text-sm">{actionModal.action.description}</div>
               </div>
 
-              <div className="mb-4">
-                <div className="text-sm text-slate-400 mb-1">Command to execute</div>
-                <pre className="bg-slate-900 rounded-lg p-3 text-xs overflow-x-auto text-green-400">
-                  {actionModal.action.command}
-                </pre>
-              </div>
+              {/* Port management options */}
+              {actionModal.action.isPortManagement && (
+                <div className="mb-4">
+                  <div className="text-sm text-slate-400 mb-2">Action Type</div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 p-2 bg-slate-900 rounded-lg cursor-pointer hover:bg-slate-700">
+                      <input
+                        type="radio"
+                        name="portAction"
+                        value="block"
+                        checked={portActionType === 'block'}
+                        onChange={(e) => setPortActionType(e.target.value)}
+                        className="accent-orange-500"
+                      />
+                      <div>
+                        <div className="font-medium text-sm">Block Completely</div>
+                        <div className="text-xs text-slate-400">Deny all access to this port</div>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-slate-900 rounded-lg cursor-pointer hover:bg-slate-700">
+                      <input
+                        type="radio"
+                        name="portAction"
+                        value="localhost"
+                        checked={portActionType === 'localhost'}
+                        onChange={(e) => setPortActionType(e.target.value)}
+                        className="accent-orange-500"
+                      />
+                      <div>
+                        <div className="font-medium text-sm">Restrict to Localhost</div>
+                        <div className="text-xs text-slate-400">Allow only connections from 127.0.0.1</div>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-slate-900 rounded-lg cursor-pointer hover:bg-slate-700">
+                      <input
+                        type="radio"
+                        name="portAction"
+                        value="ip"
+                        checked={portActionType === 'ip'}
+                        onChange={(e) => setPortActionType(e.target.value)}
+                        className="accent-orange-500"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">Restrict to Specific IP</div>
+                        <div className="text-xs text-slate-400">Allow only connections from a specific IP address</div>
+                      </div>
+                    </label>
+                    {portActionType === 'ip' && (
+                      <div className="ml-6 mt-2">
+                        <input
+                          type="text"
+                          value={allowedIP}
+                          onChange={(e) => setAllowedIP(e.target.value)}
+                          placeholder="Enter IP address (e.g., 192.168.1.100)"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm focus:outline-none focus:border-orange-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Show command only for non-port-management actions */}
+              {!actionModal.action.isPortManagement && actionModal.action.command && (
+                <div className="mb-4">
+                  <div className="text-sm text-slate-400 mb-1">Command to execute</div>
+                  <pre className="bg-slate-900 rounded-lg p-3 text-xs overflow-x-auto text-green-400">
+                    {actionModal.action.command}
+                  </pre>
+                </div>
+              )}
 
               {actionResult && (
                 <div className="mb-4">
@@ -572,8 +652,26 @@ function Security() {
               )}
               {!actionResult && (
                 <button
-                  onClick={() => executeAction(actionModal.serverId, actionModal.action.id)}
-                  disabled={actionRunning}
+                  onClick={() => {
+                    if (actionModal.action.isPortManagement) {
+                      // For port management, determine the IP to pass based on selection
+                      let ipToSend = null;
+                      if (portActionType === 'localhost') {
+                        ipToSend = 'localhost';
+                      } else if (portActionType === 'ip') {
+                        if (!allowedIP.trim()) {
+                          alert('Please enter an IP address');
+                          return;
+                        }
+                        ipToSend = allowedIP.trim();
+                      }
+                      // null means block
+                      executeAction(actionModal.serverId, actionModal.action.id, ipToSend);
+                    } else {
+                      executeAction(actionModal.serverId, actionModal.action.id);
+                    }
+                  }}
+                  disabled={actionRunning || (actionModal.action.isPortManagement && portActionType === 'ip' && !allowedIP.trim())}
                   className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-lg transition-colors disabled:opacity-50"
                 >
                   {actionRunning ? (

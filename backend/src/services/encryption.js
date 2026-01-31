@@ -60,7 +60,8 @@ export function decrypt(encryptedData) {
     const key = getKey();
     const parts = encryptedData.split(':');
     if (parts.length !== 3) {
-      throw new Error('Invalid encrypted data format');
+      console.error('Decrypt error: Invalid format, expected 3 parts, got', parts.length);
+      return null;
     }
 
     const iv = Buffer.from(parts[0], 'base64');
@@ -75,7 +76,7 @@ export function decrypt(encryptedData) {
 
     return decrypted;
   } catch (err) {
-    // Don't log as error - credential issues are handled gracefully by callers
+    console.error('Decrypt error:', err.message);
     return null;
   }
 }

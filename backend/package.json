@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Claude Dev Hub Backend",
+  "description": "CoffeePot DevOps Backend",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

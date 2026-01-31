@@ -51,18 +51,26 @@ router.get('/:id', (req, res) => {
     }
 
     // Decrypt all sensitive fields
+    const decryptedPassword = decrypt(entry.encrypted_password);
+    const decryptedUsername = decrypt(entry.encrypted_username);
+    const decryptedUrl = decrypt(entry.encrypted_url);
+    const decryptedNotes = decrypt(entry.encrypted_notes);
+
+    console.log(`Vault decrypt for ${entry.name}: password=${decryptedPassword ? 'OK' : 'FAILED'}, username=${decryptedUsername ? 'OK' : 'FAILED'}`);
+
     res.json({
       id: entry.id,
       name: entry.name,
-      username: decrypt(entry.encrypted_username) || '',
-      password: decrypt(entry.encrypted_password) || '',
-      url: decrypt(entry.encrypted_url) || '',
-      notes: decrypt(entry.encrypted_notes) || '',
+      username: decryptedUsername || '',
+      password: decryptedPassword || '',
+      url: decryptedUrl || '',
+      notes: decryptedNotes || '',
       category: entry.category,
       createdAt: entry.created_at,
       updatedAt: entry.updated_at
     });
   } catch (err) {
+    console.error('Vault get error:', err);
     res.status(500).json({ error: err.message });
   }
 });

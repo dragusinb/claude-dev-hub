@@ -325,13 +325,19 @@ const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 // Get Cloudflare API token from Vault
 function getCloudflareToken() {
   try {
+    console.log('[CF DEBUG] Getting Cloudflare token from vault...');
     const db = getDb();
     const entry = db.prepare("SELECT * FROM vault WHERE name = 'Cloudflare API' LIMIT 1").get();
+    console.log('[CF DEBUG] Vault entry found:', entry ? 'yes' : 'no');
     if (entry && entry.encrypted_password) {
-      return decrypt(entry.encrypted_password);
+      console.log('[CF DEBUG] Encrypted password exists, decrypting...');
+      const token = decrypt(entry.encrypted_password);
+      console.log('[CF DEBUG] Decrypted token:', token ? `${token.substring(0, 10)}...` : 'null');
+      return token;
     }
+    console.log('[CF DEBUG] No encrypted_password in entry');
   } catch (err) {
-    console.error('Failed to get Cloudflare token:', err.message);
+    console.error('[CF DEBUG] Failed to get Cloudflare token:', err.message, err.stack);
   }
   return null;
 }
@@ -511,13 +517,18 @@ router.delete('/cloudflare/zones/:zoneId/records/:recordId', async (req, res) =>
 
 // GET /api/dns/cloudflare/status - Check Cloudflare connection
 router.get('/cloudflare/status', async (req, res) => {
+  console.log('[CF DEBUG] /cloudflare/status endpoint called');
   try {
     const token = getCloudflareToken();
+    console.log('[CF DEBUG] Token retrieved:', token ? 'yes' : 'no');
     if (!token) {
+      console.log('[CF DEBUG] Returning not connected - no token');
       return res.json({ connected: false, error: 'No API token configured' });
     }
 
+    console.log('[CF DEBUG] Calling Cloudflare API to verify token...');
     const data = await cloudflareRequest('/user/tokens/verify');
+    console.log('[CF DEBUG] Cloudflare API response:', JSON.stringify(data));
 
     res.json({
       connected: true,
@@ -525,6 +536,7 @@ router.get('/cloudflare/status', async (req, res) => {
       expiresOn: data.result?.expires_on
     });
   } catch (err) {
+    console.error('[CF DEBUG] Error in /cloudflare/status:', err.message, err.stack);
     res.json({ connected: false, error: err.message });
   }
 });

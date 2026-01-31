@@ -40,9 +40,21 @@ This is a persistent task list for tracking ongoing work and improvements.
 
 - [ ] None currently
 
+## Recently Completed
+
+- [x] Network Traffic Monitoring - Track download/upload rates with historical graphs
+- [x] Contabo Integration - View VPS/VDS instances, specs, pricing, start/stop/restart
+- [x] Contabo-Server Linking - Match Contabo instances to Servers by IP address
+- [x] Local Server Support - Execute monitoring/security/exec commands locally without SSH
+- [x] Port Management - Block, restrict to localhost, or restrict to specific IP
+
 ## Backlog
 
 ### High Priority
+- [ ] Improve security for credentials storage:
+  - Move all API keys/passwords to Vault (Contabo, SMTP, etc.)
+  - Ensure all sensitive data is encrypted at rest
+  - Add credential rotation support
 - [x] Claude session launch improvements (partially addressed):
   - Improved theme selection pattern detection (case-insensitive, multiple patterns)
   - Added handling for trust project prompts
@@ -52,11 +64,16 @@ This is a persistent task list for tracking ongoing work and improvements.
   - NOTE: Needs testing on production server
 
 ### Medium Priority
-- [ ] Add "Restrict port to IP" action (allow specific IP only)
+- [x] Add "Restrict port to IP" action (allow specific IP only)
+  - Port management actions now show options: Block, Localhost, or Specific IP
+  - Non-standard ports (like 8000) now have Fix Now button
 - [ ] Add SSH key-only authentication action
 - [ ] Add automatic backup verification
-- [ ] Add disk usage alerts
-- [ ] Add network traffic monitoring
+- [x] Add disk usage alerts (already implemented)
+- [x] Add network traffic monitoring
+  - Added network_rx_bytes, network_tx_bytes, network_rx_rate, network_tx_rate columns to server_health_history
+  - Health collector now captures total bytes from /proc/net/dev and calculates rate
+  - Monitoring page shows network traffic chart (KB/s) with download (RX) and upload (TX) lines
 
 ### Low Priority
 - [ ] Add dark/light theme toggle for UI
@@ -64,6 +81,17 @@ This is a persistent task list for tracking ongoing work and improvements.
 - [ ] Add multi-user support with roles
 - [ ] Add API rate limiting
 - [ ] Code splitting for smaller bundle size
+
+### Ideas for Future
+- [ ] Server Groups/Tags - Organize servers by project or environment
+- [ ] Scheduled Tasks - Run commands on servers via cron-like schedules
+- [ ] Cost Dashboard - Track monthly costs across providers, show trends
+- [ ] Deployment Pipelines - Simple deploy workflows (git pull, build, restart)
+- [ ] Log Aggregation - View logs from multiple servers in one place
+- [ ] Docker Container Monitoring - Track containers running on servers
+- [ ] Two-Factor Authentication - Add 2FA for login security
+- [ ] Audit Log - Track who did what and when
+- [ ] Mobile App - React Native companion app
 
 ## Configuration Notes
 

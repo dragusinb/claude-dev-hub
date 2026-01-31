@@ -1,9 +1,36 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { Client } from 'ssh2';
+import { exec } from 'child_process';
 import { createServer, getServers, getServer, deleteServer, getServerHealthHistory, updateServer } from '../models/database.js';
 
 const router = express.Router();
+
+// Check if server is the local machine
+function isLocalServer(server) {
+  return server.is_local === 1 ||
+         server.host === 'localhost' ||
+         server.host === '127.0.0.1' ||
+         server.name?.toLowerCase().includes('claude dev hub server');
+}
+
+// Execute commands locally
+function executeLocally(commands) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Command timeout'));
+    }, 15000);
+
+    exec(commands, { shell: '/bin/bash', maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      clearTimeout(timeout);
+      if (err && err.killed) {
+        reject(new Error('Command timeout'));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
 
 // List all servers
 router.get('/', (req, res) => {
@@ -114,6 +141,11 @@ router.post('/:id/test', async (req, res) => {
       return res.status(404).json({ error: 'Server not found' });
     }
 
+    // Local server - no need to test connection
+    if (isLocalServer(server)) {
+      return res.json({ success: true, message: 'Local server - connection OK' });
+    }
+
     const conn = new Client();
 
     const connectionPromise = new Promise((resolve, reject) => {
@@ -182,6 +214,16 @@ router.post('/:id/exec', async (req, res) => {
       return res.status(400).json({ error: 'Command is required' });
     }
 
+    // Local server - execute directly
+    if (isLocalServer(server)) {
+      try {
+        const output = await executeLocally(command);
+        return res.json({ stdout: output, stderr: '', exitCode: 0 });
+      } catch (err) {
+        return res.json({ stdout: '', stderr: err.message, exitCode: 1 });
+      }
+    }
+
     const conn = new Client();
 
     const execPromise = new Promise((resolve, reject) => {
@@ -243,6 +285,52 @@ router.post('/:id/exec', async (req, res) => {
   }
 });
 
+// Parse health output into stats object
+function parseHealthOutput(output) {
+  const sections = output.split('===');
+  const stats = {};
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i].trim();
+    if (section.startsWith('CPU')) {
+      const cpuValue = sections[i + 1]?.trim();
+      stats.cpu = parseFloat(cpuValue) || 0;
+    } else if (section.startsWith('MEMORY')) {
+      const memParts = sections[i + 1]?.trim().split(' ');
+      if (memParts && memParts.length >= 3) {
+        stats.memory = {
+          total: parseInt(memParts[0]) || 0,
+          used: parseInt(memParts[1]) || 0,
+          free: parseInt(memParts[2]) || 0,
+          percent: memParts[0] > 0 ? Math.round((memParts[1] / memParts[0]) * 100) : 0
+        };
+      }
+    } else if (section.startsWith('DISK')) {
+      const diskParts = sections[i + 1]?.trim().split(' ');
+      if (diskParts && diskParts.length >= 4) {
+        stats.disk = {
+          total: diskParts[0],
+          used: diskParts[1],
+          free: diskParts[2],
+          percent: parseInt(diskParts[3]) || 0
+        };
+      }
+    } else if (section.startsWith('UPTIME')) {
+      stats.uptime = sections[i + 1]?.trim() || 'Unknown';
+    } else if (section.startsWith('LOAD')) {
+      const loadParts = sections[i + 1]?.trim().split(' ');
+      if (loadParts && loadParts.length >= 3) {
+        stats.load = {
+          one: parseFloat(loadParts[0]) || 0,
+          five: parseFloat(loadParts[1]) || 0,
+          fifteen: parseFloat(loadParts[2]) || 0
+        };
+      }
+    }
+  }
+  return stats;
+}
+
 // Get server health stats (CPU, memory, disk)
 router.get('/:id/health', async (req, res) => {
   try {
@@ -251,6 +339,32 @@ router.get('/:id/health', async (req, res) => {
       return res.status(404).json({ error: 'Server not found' });
     }
 
+    const commands = `
+      echo "===CPU==="
+      top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1
+      echo "===MEMORY==="
+      free -m | awk 'NR==2{printf "%s %s %s", $2, $3, $4}'
+      echo "===DISK==="
+      df -h / | awk 'NR==2{printf "%s %s %s %s", $2, $3, $4, $5}'
+      echo "===UPTIME==="
+      uptime -p
+      echo "===LOAD==="
+      cat /proc/loadavg | awk '{print $1, $2, $3}'
+    `;
+
+    // Local server - execute directly
+    if (isLocalServer(server)) {
+      const output = await executeLocally(commands);
+      const stats = parseHealthOutput(output);
+      return res.json({
+        success: true,
+        server: { id: server.id, name: server.name, host: server.host },
+        stats,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Remote server - use SSH
     const conn = new Client();
 
     const healthPromise = new Promise((resolve, reject) => {
@@ -260,20 +374,6 @@ router.get('/:id/health', async (req, res) => {
       }, 15000);
 
       conn.on('ready', () => {
-        // Run multiple commands to get system stats
-        const commands = `
-          echo "===CPU==="
-          top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1
-          echo "===MEMORY==="
-          free -m | awk 'NR==2{printf "%s %s %s", $2, $3, $4}'
-          echo "===DISK==="
-          df -h / | awk 'NR==2{printf "%s %s %s %s", $2, $3, $4, $5}'
-          echo "===UPTIME==="
-          uptime -p
-          echo "===LOAD==="
-          cat /proc/loadavg | awk '{print $1, $2, $3}'
-        `;
-
         conn.exec(commands, (err, stream) => {
           if (err) {
             clearTimeout(timeout);
@@ -289,51 +389,7 @@ router.get('/:id/health', async (req, res) => {
           stream.on('close', () => {
             clearTimeout(timeout);
             conn.end();
-
-            // Parse the output
-            const sections = output.split('===');
-            const stats = {};
-
-            for (let i = 0; i < sections.length; i++) {
-              const section = sections[i].trim();
-              if (section.startsWith('CPU')) {
-                const cpuValue = sections[i + 1]?.trim();
-                stats.cpu = parseFloat(cpuValue) || 0;
-              } else if (section.startsWith('MEMORY')) {
-                const memParts = sections[i + 1]?.trim().split(' ');
-                if (memParts && memParts.length >= 3) {
-                  stats.memory = {
-                    total: parseInt(memParts[0]) || 0,
-                    used: parseInt(memParts[1]) || 0,
-                    free: parseInt(memParts[2]) || 0,
-                    percent: memParts[0] > 0 ? Math.round((memParts[1] / memParts[0]) * 100) : 0
-                  };
-                }
-              } else if (section.startsWith('DISK')) {
-                const diskParts = sections[i + 1]?.trim().split(' ');
-                if (diskParts && diskParts.length >= 4) {
-                  stats.disk = {
-                    total: diskParts[0],
-                    used: diskParts[1],
-                    free: diskParts[2],
-                    percent: parseInt(diskParts[3]) || 0
-                  };
-                }
-              } else if (section.startsWith('UPTIME')) {
-                stats.uptime = sections[i + 1]?.trim() || 'Unknown';
-              } else if (section.startsWith('LOAD')) {
-                const loadParts = sections[i + 1]?.trim().split(' ');
-                if (loadParts && loadParts.length >= 3) {
-                  stats.load = {
-                    one: parseFloat(loadParts[0]) || 0,
-                    five: parseFloat(loadParts[1]) || 0,
-                    fifteen: parseFloat(loadParts[2]) || 0
-                  };
-                }
-              }
-            }
-
-            resolve(stats);
+            resolve(parseHealthOutput(output));
           });
         });
       });

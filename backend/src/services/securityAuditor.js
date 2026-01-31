@@ -1,38 +1,160 @@
 import { Client } from 'ssh2';
+import { exec } from 'child_process';
 import { getAllServersForMonitoring, addSecurityAudit, getServerOwner } from '../models/database.js';
 import { sendSecurityAlert } from './alertService.js';
 
+// Check if server is the local machine
+function isLocalServer(server) {
+  return server.is_local === 1 ||
+         server.host === 'localhost' ||
+         server.host === '127.0.0.1' ||
+         server.name?.toLowerCase().includes('local') ||
+         server.name?.toLowerCase().includes('claude dev hub server');
+}
+
+// Execute audit commands locally
+function auditServerLocally(commands) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Command timeout'));
+    }, 60000);
+
+    exec(commands, { shell: '/bin/bash', maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      clearTimeout(timeout);
+      if (err && err.killed) {
+        reject(new Error('Command timeout'));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
 let auditInterval = null;
 
-// Run security audit on a single server via SSH
+// Parse audit output and return audit object
+function parseAuditOutput(output) {
+  const sections = output.split('===');
+  const audit = {
+    openPorts: [],
+    localhostOnlyPorts: [],
+    pendingUpdates: 0,
+    securityUpdates: 0,
+    failedSshAttempts: 0,
+    firewallActive: false,
+    fail2banActive: false,
+    findings: [],
+    recommendations: [],
+    score: 100
+  };
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i].trim();
+    const data = sections[i + 1]?.trim() || '';
+
+    if (section === 'PORTS') {
+      const portSet = new Set();
+      const localhostSet = new Set();
+
+      for (const line of data.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        let port, isLocalhost = false;
+
+        if (trimmed.startsWith('[::')) {
+          const match = trimmed.match(/\[([^\]]*)\]:(\d+)/);
+          if (match) {
+            port = parseInt(match[2]);
+            isLocalhost = match[1] === '::1';
+          }
+        } else {
+          const parts = trimmed.split(':');
+          if (parts.length >= 2) {
+            port = parseInt(parts[parts.length - 1]);
+            const addr = parts.slice(0, -1).join(':');
+            isLocalhost = addr === '127.0.0.1' || addr === 'localhost';
+          }
+        }
+
+        if (port && !isNaN(port)) {
+          portSet.add(port);
+          if (isLocalhost) {
+            localhostSet.add(port);
+          }
+        }
+      }
+
+      audit.openPorts = Array.from(portSet).sort((a, b) => a - b);
+
+      for (const port of localhostSet) {
+        const hasPublicBinding = data.split('\n').some(line => {
+          const trimmed = line.trim();
+          if (!trimmed.endsWith(`:${port}`)) return false;
+          return trimmed.startsWith('0.0.0.0:') ||
+                 trimmed.startsWith('*:') ||
+                 trimmed.startsWith('[::]:') ||
+                 (!trimmed.startsWith('127.0.0.1:') && !trimmed.startsWith('[::1]:'));
+        });
+
+        if (!hasPublicBinding) {
+          audit.localhostOnlyPorts.push(port);
+        }
+      }
+    } else if (section === 'UPDATES') {
+      audit.pendingUpdates = parseInt(data) || 0;
+    } else if (section === 'SECURITY') {
+      audit.securityUpdates = parseInt(data) || 0;
+    } else if (section === 'SSHFAIL') {
+      audit.failedSshAttempts = parseInt(data) || 0;
+    } else if (section === 'FIREWALL') {
+      audit.firewallActive = data.toLowerCase().includes('active');
+    } else if (section === 'FAIL2BAN') {
+      audit.fail2banActive = data.trim() === 'active';
+    }
+  }
+
+  analyzeAudit(audit);
+  return audit;
+}
+
+// Run security audit on a single server via SSH (or locally)
 async function auditServer(server) {
+  const commands = `
+    echo "===PORTS==="
+    ss -tuln 2>/dev/null | grep LISTEN | awk '{print $5}' | sort -u
+    echo "===UPDATES==="
+    apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l
+    echo "===SECURITY==="
+    apt list --upgradable 2>/dev/null | grep -i security | wc -l
+    echo "===SSHFAIL==="
+    grep "Failed password" /var/log/auth.log 2>/dev/null | tail -100 | wc -l
+    echo "===ROOTLOGIN==="
+    grep -c "^PermitRootLogin yes" /etc/ssh/sshd_config 2>/dev/null || echo "0"
+    echo "===FIREWALL==="
+    ufw status 2>/dev/null | head -1
+    echo "===FAIL2BAN==="
+    systemctl is-active fail2ban 2>/dev/null || echo "inactive"
+    echo "===USERS==="
+    cat /etc/passwd | grep -c ":/bin/bash"
+  `;
+
+  // Check if this is the local server - execute locally
+  if (isLocalServer(server)) {
+    console.log(`Running local security audit for ${server.name}`);
+    const output = await auditServerLocally(commands);
+    return parseAuditOutput(output);
+  }
+
+  // Remote server - use SSH
   return new Promise((resolve, reject) => {
     const conn = new Client();
     const timeout = setTimeout(() => {
       conn.end();
       reject(new Error('Connection timeout'));
-    }, 60000); // 60 second timeout for audit
+    }, 60000);
 
     conn.on('ready', () => {
-      const commands = `
-        echo "===PORTS==="
-        ss -tuln 2>/dev/null | grep LISTEN | awk '{print $5}' | sort -u
-        echo "===UPDATES==="
-        apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l
-        echo "===SECURITY==="
-        apt list --upgradable 2>/dev/null | grep -i security | wc -l
-        echo "===SSHFAIL==="
-        grep "Failed password" /var/log/auth.log 2>/dev/null | tail -100 | wc -l
-        echo "===ROOTLOGIN==="
-        grep -c "^PermitRootLogin yes" /etc/ssh/sshd_config 2>/dev/null || echo "0"
-        echo "===FIREWALL==="
-        ufw status 2>/dev/null | head -1
-        echo "===FAIL2BAN==="
-        systemctl is-active fail2ban 2>/dev/null || echo "inactive"
-        echo "===USERS==="
-        cat /etc/passwd | grep -c ":/bin/bash"
-      `;
-
       conn.exec(commands, (err, stream) => {
         if (err) {
           clearTimeout(timeout);
@@ -45,108 +167,11 @@ async function auditServer(server) {
         stream.on('data', (data) => {
           output += data.toString();
         });
-        stream.stderr.on('data', (data) => {
-          // Ignore stderr
-        });
+        stream.stderr.on('data', () => {});
         stream.on('close', () => {
           clearTimeout(timeout);
           conn.end();
-
-          // Parse the output
-          const sections = output.split('===');
-          const audit = {
-            openPorts: [],
-            localhostOnlyPorts: [], // Ports that are only accessible from localhost
-            pendingUpdates: 0,
-            securityUpdates: 0,
-            failedSshAttempts: 0,
-            firewallActive: false,
-            fail2banActive: false,
-            findings: [],
-            recommendations: [],
-            score: 100
-          };
-
-          for (let i = 0; i < sections.length; i++) {
-            const section = sections[i].trim();
-            const data = sections[i + 1]?.trim() || '';
-
-            if (section === 'PORTS') {
-              // Parse port info including binding address
-              // Format: "0.0.0.0:22" or "127.0.0.1:3306" or "[::]:80"
-              const portSet = new Set();
-              const localhostSet = new Set();
-
-              for (const line of data.split('\n')) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-
-                // Extract port from the address
-                let port, isLocalhost = false;
-
-                if (trimmed.startsWith('[::')) {
-                  // IPv6 format like [::]:80 or [::1]:80
-                  const match = trimmed.match(/\[([^\]]*)\]:(\d+)/);
-                  if (match) {
-                    port = parseInt(match[2]);
-                    isLocalhost = match[1] === '::1';
-                  }
-                } else {
-                  // IPv4 format like 0.0.0.0:22 or 127.0.0.1:3306
-                  const parts = trimmed.split(':');
-                  if (parts.length >= 2) {
-                    port = parseInt(parts[parts.length - 1]);
-                    const addr = parts.slice(0, -1).join(':');
-                    isLocalhost = addr === '127.0.0.1' || addr === 'localhost';
-                  }
-                }
-
-                if (port && !isNaN(port)) {
-                  portSet.add(port);
-                  if (isLocalhost) {
-                    localhostSet.add(port);
-                  }
-                }
-              }
-
-              // A port is localhost-only if ALL its bindings are localhost
-              // We need to track if a port has any non-localhost binding
-              audit.openPorts = Array.from(portSet).sort((a, b) => a - b);
-
-              // Only mark as localhost-only if the port ONLY appears bound to localhost
-              for (const port of localhostSet) {
-                // Check if this port also appears bound to a non-localhost address
-                const hasPublicBinding = data.split('\n').some(line => {
-                  const trimmed = line.trim();
-                  if (!trimmed.endsWith(`:${port}`)) return false;
-                  // Check if it's bound to 0.0.0.0 or [::] or a specific public IP
-                  return trimmed.startsWith('0.0.0.0:') ||
-                         trimmed.startsWith('*:') ||
-                         trimmed.startsWith('[::]:') ||
-                         (!trimmed.startsWith('127.0.0.1:') && !trimmed.startsWith('[::1]:'));
-                });
-
-                if (!hasPublicBinding) {
-                  audit.localhostOnlyPorts.push(port);
-                }
-              }
-            } else if (section === 'UPDATES') {
-              audit.pendingUpdates = parseInt(data) || 0;
-            } else if (section === 'SECURITY') {
-              audit.securityUpdates = parseInt(data) || 0;
-            } else if (section === 'SSHFAIL') {
-              audit.failedSshAttempts = parseInt(data) || 0;
-            } else if (section === 'FIREWALL') {
-              audit.firewallActive = data.toLowerCase().includes('active');
-            } else if (section === 'FAIL2BAN') {
-              audit.fail2banActive = data.trim() === 'active';
-            }
-          }
-
-          // Analyze and generate findings/recommendations
-          analyzeAudit(audit);
-
-          resolve(audit);
+          resolve(parseAuditOutput(output));
         });
       });
     });
@@ -282,7 +307,8 @@ function analyzeAudit(audit) {
         severity: 'low',
         category: 'ports',
         port: port,
-        message: `Non-standard port ${port} is open`
+        message: `Non-standard port ${port} is open`,
+        action: `manage_port_${port}`
       });
       deductions.ports += 2;
     }
