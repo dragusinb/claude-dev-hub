@@ -617,3 +617,36 @@ export function deleteDnsDomain(id) {
 export function getDnsDomainRecords(id) {
   return request(`/dns/domains/${id}/records`);
 }
+
+// Cloudflare DNS
+export function getCloudflareStatus() {
+  return request('/dns/cloudflare/status');
+}
+
+export function getCloudflareZones() {
+  return request('/dns/cloudflare/zones');
+}
+
+export function getCloudflareRecords(zoneId) {
+  return request(`/dns/cloudflare/zones/${zoneId}/records`);
+}
+
+export function createCloudflareRecord(zoneId, record) {
+  return request(`/dns/cloudflare/zones/${zoneId}/records`, {
+    method: 'POST',
+    body: JSON.stringify(record)
+  });
+}
+
+export function updateCloudflareRecord(zoneId, recordId, record) {
+  return request(`/dns/cloudflare/zones/${zoneId}/records/${recordId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(record)
+  });
+}
+
+export function deleteCloudflareRecord(zoneId, recordId) {
+  return request(`/dns/cloudflare/zones/${zoneId}/records/${recordId}`, {
+    method: 'DELETE'
+  });
+}

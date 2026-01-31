@@ -2,7 +2,9 @@ import express from 'express';
 import dns from 'dns';
 import { promisify } from 'util';
 import { getDb } from '../models/database.js';
+import { decrypt } from '../services/encryption.js';
 import { v4 as uuidv4 } from 'uuid';
+import fetch from 'node-fetch';
 
 const router = express.Router();
 
@@ -313,6 +315,217 @@ router.get('/whois', async (req, res) => {
   } catch (err) {
     console.error('WHOIS error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== CLOUDFLARE INTEGRATION ====================
+
+const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
+
+// Get Cloudflare API token from Vault
+function getCloudflareToken() {
+  try {
+    const db = getDb();
+    const entry = db.prepare("SELECT * FROM vault WHERE name = 'Cloudflare API' LIMIT 1").get();
+    if (entry && entry.encrypted_password) {
+      return decrypt(entry.encrypted_password);
+    }
+  } catch (err) {
+    console.error('Failed to get Cloudflare token:', err.message);
+  }
+  return null;
+}
+
+// Make Cloudflare API request
+async function cloudflareRequest(endpoint, method = 'GET', body = null) {
+  const token = getCloudflareToken();
+  if (!token) {
+    throw new Error('Cloudflare API token not configured. Add it to the Vault as "Cloudflare API".');
+  }
+
+  const options = {
+    method,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(`${CLOUDFLARE_API}${endpoint}`, options);
+  const data = await response.json();
+
+  if (!data.success) {
+    const errorMsg = data.errors?.map(e => e.message).join(', ') || 'Cloudflare API error';
+    throw new Error(errorMsg);
+  }
+
+  return data;
+}
+
+// GET /api/dns/cloudflare/zones - List all Cloudflare zones
+router.get('/cloudflare/zones', async (req, res) => {
+  try {
+    const data = await cloudflareRequest('/zones?per_page=50');
+
+    const zones = data.result.map(zone => ({
+      id: zone.id,
+      name: zone.name,
+      status: zone.status,
+      paused: zone.paused,
+      type: zone.type,
+      nameServers: zone.name_servers,
+      originalNameServers: zone.original_name_servers,
+      plan: zone.plan?.name,
+      createdOn: zone.created_on,
+      modifiedOn: zone.modified_on
+    }));
+
+    res.json({
+      zones,
+      total: data.result_info?.total_count || zones.length
+    });
+  } catch (err) {
+    console.error('Cloudflare zones error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/dns/cloudflare/zones/:zoneId/records - List DNS records for a zone
+router.get('/cloudflare/zones/:zoneId/records', async (req, res) => {
+  try {
+    const { zoneId } = req.params;
+    const { type, name } = req.query;
+
+    let endpoint = `/zones/${zoneId}/dns_records?per_page=100`;
+    if (type) endpoint += `&type=${type}`;
+    if (name) endpoint += `&name=${encodeURIComponent(name)}`;
+
+    const data = await cloudflareRequest(endpoint);
+
+    const records = data.result.map(record => ({
+      id: record.id,
+      type: record.type,
+      name: record.name,
+      content: record.content,
+      ttl: record.ttl,
+      proxied: record.proxied,
+      priority: record.priority,
+      createdOn: record.created_on,
+      modifiedOn: record.modified_on
+    }));
+
+    // Sort by type, then name
+    records.sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return a.name.localeCompare(b.name);
+    });
+
+    res.json({
+      zoneId,
+      records,
+      total: data.result_info?.total_count || records.length
+    });
+  } catch (err) {
+    console.error('Cloudflare records error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/dns/cloudflare/zones/:zoneId/records - Create DNS record
+router.post('/cloudflare/zones/:zoneId/records', async (req, res) => {
+  try {
+    const { zoneId } = req.params;
+    const { type, name, content, ttl, proxied, priority } = req.body;
+
+    if (!type || !name || !content) {
+      return res.status(400).json({ error: 'Type, name, and content are required' });
+    }
+
+    const recordData = {
+      type,
+      name,
+      content,
+      ttl: ttl || 1, // 1 = auto
+      proxied: proxied !== undefined ? proxied : false
+    };
+
+    if (type === 'MX' && priority !== undefined) {
+      recordData.priority = priority;
+    }
+
+    const data = await cloudflareRequest(`/zones/${zoneId}/dns_records`, 'POST', recordData);
+
+    res.status(201).json({
+      record: data.result,
+      message: 'DNS record created successfully'
+    });
+  } catch (err) {
+    console.error('Cloudflare create record error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/dns/cloudflare/zones/:zoneId/records/:recordId - Update DNS record
+router.patch('/cloudflare/zones/:zoneId/records/:recordId', async (req, res) => {
+  try {
+    const { zoneId, recordId } = req.params;
+    const { type, name, content, ttl, proxied, priority } = req.body;
+
+    const recordData = {};
+    if (type) recordData.type = type;
+    if (name) recordData.name = name;
+    if (content) recordData.content = content;
+    if (ttl !== undefined) recordData.ttl = ttl;
+    if (proxied !== undefined) recordData.proxied = proxied;
+    if (priority !== undefined) recordData.priority = priority;
+
+    const data = await cloudflareRequest(`/zones/${zoneId}/dns_records/${recordId}`, 'PATCH', recordData);
+
+    res.json({
+      record: data.result,
+      message: 'DNS record updated successfully'
+    });
+  } catch (err) {
+    console.error('Cloudflare update record error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/dns/cloudflare/zones/:zoneId/records/:recordId - Delete DNS record
+router.delete('/cloudflare/zones/:zoneId/records/:recordId', async (req, res) => {
+  try {
+    const { zoneId, recordId } = req.params;
+
+    await cloudflareRequest(`/zones/${zoneId}/dns_records/${recordId}`, 'DELETE');
+
+    res.json({ message: 'DNS record deleted successfully' });
+  } catch (err) {
+    console.error('Cloudflare delete record error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/dns/cloudflare/status - Check Cloudflare connection
+router.get('/cloudflare/status', async (req, res) => {
+  try {
+    const token = getCloudflareToken();
+    if (!token) {
+      return res.json({ connected: false, error: 'No API token configured' });
+    }
+
+    const data = await cloudflareRequest('/user/tokens/verify');
+
+    res.json({
+      connected: true,
+      status: data.result?.status,
+      expiresOn: data.result?.expires_on
+    });
+  } catch (err) {
+    res.json({ connected: false, error: err.message });
   }
 });
 
