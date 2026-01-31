@@ -15,6 +15,7 @@ import Contabo from './pages/Contabo';
 import Logs from './pages/Logs';
 import Deployments from './pages/Deployments';
 import Costs from './pages/Costs';
+import CronJobs from './pages/CronJobs';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { isAuthenticated, checkAuth } from './services/auth';
@@ -74,6 +75,7 @@ function App() {
         <Route path="logs" element={<Logs />} />
         <Route path="deployments" element={<Deployments />} />
         <Route path="costs" element={<Costs />} />
+        <Route path="cron" element={<CronJobs />} />
         <Route path="vault" element={<Vault />} />
         <Route path="settings" element={<Settings />} />
       </Route>

@@ -555,3 +555,34 @@ export function getRecentDeploymentRuns(limit = 50) {
 export function getDeploymentRun(id) {
   return request(`/deployments/runs/${id}`);
 }
+
+// ==================== CRON JOB MANAGER ====================
+
+export function getCronJobs(serverId) {
+  return request(`/cron/servers/${serverId}/jobs`);
+}
+
+export function addCronJob(serverId, job) {
+  return request(`/cron/servers/${serverId}/jobs`, {
+    method: 'POST',
+    body: JSON.stringify(job)
+  });
+}
+
+export function deleteCronJob(serverId, rawLine) {
+  return request(`/cron/servers/${serverId}/jobs`, {
+    method: 'DELETE',
+    body: JSON.stringify({ rawLine })
+  });
+}
+
+export function toggleCronJob(serverId, rawLine, enabled) {
+  return request(`/cron/servers/${serverId}/jobs/toggle`, {
+    method: 'POST',
+    body: JSON.stringify({ rawLine, enabled })
+  });
+}
+
+export function getCronPresets() {
+  return request('/cron/presets');
+}
