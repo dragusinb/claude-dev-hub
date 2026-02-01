@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, Server, Cpu, HardDrive, Clock, RefreshCw, Loader2, AlertCircle, TrendingUp, Bell, Settings, Wifi } from 'lucide-react';
+import { Activity, Server, Cpu, HardDrive, Clock, RefreshCw, Loader2, AlertCircle, TrendingUp, Bell, Settings, Wifi, Gauge } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { getServers, getServerHealth, getServerHealthHistory, getActivityLog, getDeployHistory, getAlertSettings, updateAlertSettings, getAlertHistory } from '../services/api';
 
@@ -16,18 +16,29 @@ function Monitoring() {
   const [activeTab, setActiveTab] = useState('health');
   const [historyHours, setHistoryHours] = useState(24);
   const [savingAlerts, setSavingAlerts] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(30);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (autoRefresh === 0) return;
+    const timer = setInterval(() => {
+      loadData(true);
+    }, autoRefresh * 1000);
+    return () => clearInterval(timer);
+  }, [autoRefresh]);
 
   useEffect(() => {
     // Load history for all servers when time range changes
     servers.forEach(server => loadServerHistory(server.id));
   }, [servers, historyHours]);
 
-  async function loadData() {
-    setLoading(true);
+  async function loadData(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const [serversData, activityData, deployData, alertSettingsData, alertHistoryData] = await Promise.all([
         getServers(),
@@ -41,6 +52,7 @@ function Monitoring() {
       setDeployHistory(deployData);
       setAlertSettings(alertSettingsData);
       setAlertHistory(alertHistoryData);
+      setLastRefresh(new Date());
 
       // Load health for all servers
       for (const server of serversData) {
@@ -143,19 +155,92 @@ function Monitoring() {
     return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
 
+  // Calculate overall health
+  const totalServers = servers.length;
+  const healthyServers = Object.values(healthData).filter(h => h?.success && h?.stats?.cpu < 80).length;
+  const avgCpu = totalServers > 0 ? Object.values(healthData).reduce((sum, h) => sum + (h?.stats?.cpu || 0), 0) / totalServers : 0;
+  const avgMemory = totalServers > 0 ? Object.values(healthData).reduce((sum, h) => sum + (h?.stats?.memory?.percent || 0), 0) / totalServers : 0;
+
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Server Monitoring</h1>
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh All
-        </button>
+      {/* Enhanced Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl">
+            <Activity className="w-8 h-8 text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Server Monitoring</h1>
+            <p className="text-slate-400 text-sm">
+              {healthyServers}/{totalServers} servers healthy · Last updated: {lastRefresh.toLocaleTimeString()}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={autoRefresh}
+            onChange={(e) => setAutoRefresh(Number(e.target.value))}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm"
+          >
+            <option value={0}>Manual refresh</option>
+            <option value={10}>Every 10s</option>
+            <option value={30}>Every 30s</option>
+            <option value={60}>Every 1m</option>
+            <option value={300}>Every 5m</option>
+          </select>
+          <button
+            onClick={() => loadData()}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {/* Quick Stats Bar */}
+      {!loading && totalServers > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
+              <Server className="w-4 h-4" />
+              Servers Online
+            </div>
+            <div className="text-2xl font-bold">
+              <span className="text-green-400">{healthyServers}</span>
+              <span className="text-slate-500">/{totalServers}</span>
+            </div>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
+              <Cpu className="w-4 h-4" />
+              Avg CPU
+            </div>
+            <div className={`text-2xl font-bold ${avgCpu > 80 ? 'text-red-400' : avgCpu > 60 ? 'text-yellow-400' : 'text-green-400'}`}>
+              {avgCpu.toFixed(1)}%
+            </div>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
+              <HardDrive className="w-4 h-4" />
+              Avg Memory
+            </div>
+            <div className={`text-2xl font-bold ${avgMemory > 80 ? 'text-red-400' : avgMemory > 60 ? 'text-yellow-400' : 'text-green-400'}`}>
+              {avgMemory.toFixed(1)}%
+            </div>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
+              <Bell className="w-4 h-4" />
+              Active Alerts
+            </div>
+            <div className={`text-2xl font-bold ${alertHistory.length > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+              {alertHistory.length}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto">
