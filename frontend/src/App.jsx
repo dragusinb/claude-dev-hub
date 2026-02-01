@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
+import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Project from './pages/Project';
 import Servers from './pages/Servers';
@@ -64,7 +65,8 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<Home />} />
+        <Route path="projects" element={<Dashboard />} />
         <Route path="project/:id" element={<Project />} />
         <Route path="servers" element={<Servers />} />
         <Route path="monitoring" element={<Monitoring />} />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText, Rocket, DollarSign, Timer, Globe } from 'lucide-react';
+import { Coffee, Server, Settings, Home, LogOut, Menu, X, Activity, Shield, Clock, Lock, Database, ShieldCheck, Cloud, FileText, Rocket, DollarSign, Timer, Globe, FolderGit2 } from 'lucide-react';
 import { logout, getUser } from '../services/auth';
 
 function Layout() {
@@ -8,7 +8,8 @@ function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = [
-    { path: '/', icon: Home, label: 'Projects' },
+    { path: '/', icon: Home, label: 'Dashboard' },
+    { path: '/projects', icon: FolderGit2, label: 'Projects' },
     { path: '/servers', icon: Server, label: 'Servers' },
     { path: '/monitoring', icon: Activity, label: 'Monitoring' },
     { path: '/uptime', icon: Clock, label: 'Uptime' },
