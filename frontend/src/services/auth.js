@@ -13,8 +13,12 @@ export function removeToken() {
 }
 
 export function getUser() {
-  const userStr = localStorage.getItem('user');
-  return userStr ? JSON.parse(userStr) : null;
+  try {
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function setUser(user) {

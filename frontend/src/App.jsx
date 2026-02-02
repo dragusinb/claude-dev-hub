@@ -26,11 +26,17 @@ function ProtectedRoute({ children }) {
 
   useEffect(() => {
     async function verify() {
-      if (isAuthenticated()) {
-        const valid = await checkAuth();
-        setAuthenticated(valid);
+      try {
+        if (isAuthenticated()) {
+          const valid = await checkAuth();
+          setAuthenticated(valid);
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err);
+        setAuthenticated(false);
+      } finally {
+        setChecking(false);
       }
-      setChecking(false);
     }
     verify();
   }, []);
