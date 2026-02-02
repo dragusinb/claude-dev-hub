@@ -626,26 +626,92 @@ function AddCronJobModal({ server, presets, onClose, onSave }) {
 
 function getScheduleDescription(expression) {
   const parts = expression.split(' ');
-  if (parts.length !== 5) return '';
+  if (parts.length !== 5) return expression;
 
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
 
-  if (expression === '* * * * *') return 'Runs every minute';
-  if (expression === '*/5 * * * *') return 'Runs every 5 minutes';
-  if (expression === '*/15 * * * *') return 'Runs every 15 minutes';
-  if (expression === '*/30 * * * *') return 'Runs every 30 minutes';
-  if (expression === '0 * * * *') return 'Runs at the start of every hour';
-  if (expression === '0 */6 * * *') return 'Runs every 6 hours';
-  if (expression === '0 0 * * *') return 'Runs daily at midnight';
-  if (expression === '0 12 * * *') return 'Runs daily at noon';
-  if (expression === '0 0 * * 0') return 'Runs every Sunday at midnight';
-  if (expression === '0 0 1 * *') return 'Runs on the 1st of each month';
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  if (hour !== '*' && minute !== '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
-    return `Runs daily at ${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+  // Helper to format time
+  const formatTime = (h, m) => {
+    const hour24 = parseInt(h);
+    const min = m.padStart(2, '0');
+    if (hour24 === 0) return `12:${min} AM`;
+    if (hour24 === 12) return `12:${min} PM`;
+    if (hour24 > 12) return `${hour24 - 12}:${min} PM`;
+    return `${hour24}:${min} AM`;
+  };
+
+  // Common patterns
+  if (expression === '* * * * *') return 'Every minute';
+  if (minute.startsWith('*/')) return `Every ${minute.split('/')[1]} minutes`;
+  if (minute === '0' && hour.startsWith('*/')) return `Every ${hour.split('/')[1]} hours`;
+
+  // Every hour at specific minute
+  if (hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    if (minute === '0') return 'Every hour, on the hour';
+    return `Every hour at :${minute.padStart(2, '0')}`;
   }
 
-  return '';
+  // Daily patterns
+  if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    if (hour !== '*' && minute !== '*') {
+      return `Daily at ${formatTime(hour, minute)}`;
+    }
+  }
+
+  // Weekly patterns
+  if (dayOfMonth === '*' && month === '*' && dayOfWeek !== '*') {
+    const days = dayOfWeek.split(',').map(d => dayNames[parseInt(d)] || d).join(', ');
+    if (hour !== '*' && minute !== '*') {
+      return `${days} at ${formatTime(hour, minute)}`;
+    }
+    return `Every ${days}`;
+  }
+
+  // Monthly patterns
+  if (month === '*' && dayOfWeek === '*' && dayOfMonth !== '*') {
+    const suffix = ['th', 'st', 'nd', 'rd'][(dayOfMonth % 10 > 3 || Math.floor(dayOfMonth / 10) === 1) ? 0 : dayOfMonth % 10];
+    if (hour !== '*' && minute !== '*') {
+      return `${dayOfMonth}${suffix} of each month at ${formatTime(hour, minute)}`;
+    }
+    return `${dayOfMonth}${suffix} of each month`;
+  }
+
+  // Yearly patterns
+  if (dayOfMonth !== '*' && month !== '*' && dayOfWeek === '*') {
+    const monthName = monthNames[parseInt(month) - 1] || month;
+    if (hour !== '*' && minute !== '*') {
+      return `${monthName} ${dayOfMonth} at ${formatTime(hour, minute)}`;
+    }
+    return `${monthName} ${dayOfMonth}`;
+  }
+
+  // Build description from parts
+  const desc = [];
+
+  if (minute !== '*' && hour !== '*') {
+    desc.push(`at ${formatTime(hour, minute)}`);
+  } else if (minute !== '*') {
+    desc.push(`at minute ${minute}`);
+  }
+
+  if (dayOfMonth !== '*') {
+    desc.push(`on day ${dayOfMonth}`);
+  }
+
+  if (month !== '*') {
+    const monthName = monthNames[parseInt(month) - 1] || month;
+    desc.push(`in ${monthName}`);
+  }
+
+  if (dayOfWeek !== '*') {
+    const days = dayOfWeek.split(',').map(d => dayNames[parseInt(d)] || d).join(', ');
+    desc.push(`on ${days}`);
+  }
+
+  return desc.length > 0 ? desc.join(' ') : expression;
 }
 
 export default CronJobs;

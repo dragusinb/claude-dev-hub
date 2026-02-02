@@ -134,8 +134,49 @@ async function collectServerHealth(server) {
 
     const config = {
       host: server.host,
-      port: server.port,
-      username: server.username
+      port: server.port || 22,
+      username: server.username,
+      readyTimeout: 10000,
+      keepaliveInterval: 0,
+      // Support older servers with different algorithms
+      algorithms: {
+        kex: [
+          'ecdh-sha2-nistp256',
+          'ecdh-sha2-nistp384',
+          'ecdh-sha2-nistp521',
+          'diffie-hellman-group-exchange-sha256',
+          'diffie-hellman-group14-sha256',
+          'diffie-hellman-group14-sha1',
+          'diffie-hellman-group1-sha1'
+        ],
+        cipher: [
+          'aes128-ctr',
+          'aes192-ctr',
+          'aes256-ctr',
+          'aes128-gcm',
+          'aes128-gcm@openssh.com',
+          'aes256-gcm',
+          'aes256-gcm@openssh.com',
+          'aes256-cbc',
+          'aes192-cbc',
+          'aes128-cbc',
+          '3des-cbc'
+        ],
+        serverHostKey: [
+          'ssh-ed25519',
+          'ecdsa-sha2-nistp256',
+          'ecdsa-sha2-nistp384',
+          'ecdsa-sha2-nistp521',
+          'rsa-sha2-512',
+          'rsa-sha2-256',
+          'ssh-rsa'
+        ],
+        hmac: [
+          'hmac-sha2-256',
+          'hmac-sha2-512',
+          'hmac-sha1'
+        ]
+      }
     };
 
     if (server.auth_type === 'password') {
@@ -221,18 +262,23 @@ async function collectAllServersHealth() {
 
         console.log(`Collected health data for server: ${server.name}`);
       } catch (err) {
-        console.error(`Failed to collect health from ${server.name}:`, err.message);
+        // More detailed error logging
+        let errorDetail = err.message;
+        if (err.level) {
+          errorDetail = `${err.level}: ${err.message}`;
+        }
+        console.error(`Failed to collect health from ${server.name} (${server.host}):`, errorDetail);
 
-        // Record uptime event
+        // Record uptime event with detailed error
         addUptimeEvent({
           serverId: server.id,
           status: 'down',
           responseTime: null,
-          errorMessage: err.message
+          errorMessage: errorDetail.substring(0, 500) // Limit error message length
         });
 
         // Server is down - send alert
-        await alertServerDown(server.id, server.name, server.host, err.message);
+        await alertServerDown(server.id, server.name, server.host, errorDetail);
       }
     }
 

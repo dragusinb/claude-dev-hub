@@ -529,7 +529,7 @@ function DNS() {
   );
 }
 
-// Watched Domain Card
+// Watched Domain Card with Issue Detection
 function WatchedDomainCard({ domain, onDelete }) {
   const [records, setRecords] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -550,10 +550,66 @@ function WatchedDomainCard({ domain, onDelete }) {
     loadRecords();
   }, [domain.id]);
 
+  // Detect issues
+  function getIssues() {
+    if (!records) return [];
+    const issues = [];
+
+    // No A record
+    if (!records.A || records.A.length === 0) {
+      issues.push({ type: 'error', message: 'No A record - domain may not resolve' });
+    }
+
+    // Private IP in A record
+    if (records.A) {
+      const privateIPs = records.A.filter(ip =>
+        ip.startsWith('10.') || ip.startsWith('192.168.') ||
+        ip.startsWith('172.16.') || ip.startsWith('127.')
+      );
+      if (privateIPs.length > 0) {
+        issues.push({ type: 'warning', message: 'Private IP detected in A record' });
+      }
+    }
+
+    // No MX record (might need email)
+    if (!records.MX || records.MX.length === 0) {
+      issues.push({ type: 'info', message: 'No MX record - email may not work' });
+    }
+
+    // Check for email security records in TXT
+    if (records.TXT) {
+      const txtJoined = records.TXT.join(' ').toLowerCase();
+      if (!txtJoined.includes('v=spf1')) {
+        issues.push({ type: 'warning', message: 'No SPF record - email may be marked as spam' });
+      }
+    } else {
+      issues.push({ type: 'warning', message: 'No TXT records - missing SPF/DKIM' });
+    }
+
+    return issues;
+  }
+
+  const issues = records ? getIssues() : [];
+  const hasErrors = issues.some(i => i.type === 'error');
+  const hasWarnings = issues.some(i => i.type === 'warning');
+
   return (
-    <div className="bg-slate-900 rounded-lg p-4">
+    <div className={`bg-slate-900 rounded-lg p-4 border-l-4 ${
+      hasErrors ? 'border-red-500' : hasWarnings ? 'border-yellow-500' : 'border-green-500'
+    }`}>
       <div className="flex items-center justify-between mb-3">
-        <div className="font-medium">{domain.domain}</div>
+        <div className="flex items-center gap-2">
+          <div className="font-medium">{domain.domain}</div>
+          {issues.length > 0 && (
+            <span className={`text-xs px-1.5 py-0.5 rounded ${
+              hasErrors ? 'bg-red-500/20 text-red-400' :
+              hasWarnings ? 'bg-yellow-500/20 text-yellow-400' :
+              'bg-blue-500/20 text-blue-400'
+            }`}>
+              {issues.length} issue{issues.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
         <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-400">
           <Trash2 className="w-4 h-4" />
         </button>
@@ -564,14 +620,33 @@ function WatchedDomainCard({ domain, onDelete }) {
           <RefreshCw className="w-4 h-4 animate-spin mx-auto" />
         </div>
       ) : records ? (
-        <div className="space-y-2 text-sm">
-          {records.A && (
-            <div><span className="text-slate-500">A:</span> <span className="font-mono">{records.A.join(', ')}</span></div>
+        <>
+          <div className="space-y-2 text-sm">
+            {records.A && (
+              <div><span className="text-slate-500">A:</span> <span className="font-mono">{records.A.join(', ')}</span></div>
+            )}
+            {records.NS && (
+              <div><span className="text-slate-500">NS:</span> <span className="font-mono text-xs">{records.NS.slice(0, 2).join(', ')}</span></div>
+            )}
+            {records.MX && records.MX.length > 0 && (
+              <div><span className="text-slate-500">MX:</span> <span className="font-mono text-xs">{records.MX[0].exchange || records.MX[0]}</span></div>
+            )}
+          </div>
+          {issues.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-700 space-y-1">
+              {issues.map((issue, i) => (
+                <div key={i} className={`text-xs flex items-center gap-1 ${
+                  issue.type === 'error' ? 'text-red-400' :
+                  issue.type === 'warning' ? 'text-yellow-400' :
+                  'text-blue-400'
+                }`}>
+                  <AlertCircle className="w-3 h-3" />
+                  {issue.message}
+                </div>
+              ))}
+            </div>
           )}
-          {records.NS && (
-            <div><span className="text-slate-500">NS:</span> <span className="font-mono text-xs">{records.NS.slice(0, 2).join(', ')}</span></div>
-          )}
-        </div>
+        </>
       ) : (
         <div className="text-slate-500 text-sm">No records</div>
       )}

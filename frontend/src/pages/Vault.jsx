@@ -33,6 +33,66 @@ function Vault() {
     { value: 'other', label: 'Other' }
   ];
 
+  // Credential templates for common services
+  const templates = [
+    { name: 'Custom', apply: () => {} },
+    {
+      name: 'Contabo API',
+      apply: () => setFormData({
+        name: 'Contabo API',
+        username: '',
+        password: '',
+        url: 'https://my.contabo.com/api/details',
+        notes: 'Client ID: your-client-id-here\nClient Secret: your-client-secret-here',
+        category: 'api'
+      })
+    },
+    {
+      name: 'Cloudflare API',
+      apply: () => setFormData({
+        name: 'Cloudflare API',
+        username: '',
+        password: '',
+        url: 'https://dash.cloudflare.com/profile/api-tokens',
+        notes: 'API Token (not Global API Key)\nCreate token with DNS edit permissions',
+        category: 'api'
+      })
+    },
+    {
+      name: 'SMTP Server',
+      apply: () => setFormData({
+        name: '',
+        username: '',
+        password: '',
+        url: '',
+        notes: 'Host: smtp.example.com\nPort: 587\nEncryption: TLS',
+        category: 'email'
+      })
+    },
+    {
+      name: 'MySQL Database',
+      apply: () => setFormData({
+        name: '',
+        username: '',
+        password: '',
+        url: '',
+        notes: 'Host: localhost\nPort: 3306\nDatabase: dbname',
+        category: 'database'
+      })
+    },
+    {
+      name: 'SSH Server',
+      apply: () => setFormData({
+        name: '',
+        username: 'root',
+        password: '',
+        url: '',
+        notes: 'Host: your-server-ip\nPort: 22\nAuth: password or key',
+        category: 'server'
+      })
+    }
+  ];
+
   useEffect(() => {
     loadData();
   }, []);
@@ -415,6 +475,24 @@ function Vault() {
             </h2>
 
             <form onSubmit={handleCreate} className="space-y-4">
+              {!editingEntry && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Use Template</label>
+                  <select
+                    onChange={(e) => {
+                      const template = templates.find(t => t.name === e.target.value);
+                      if (template) template.apply();
+                    }}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:border-orange-500"
+                  >
+                    {templates.map(t => (
+                      <option key={t.name} value={t.name}>{t.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">Select a template to pre-fill fields with the required format</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium mb-1">Name *</label>
                 <input

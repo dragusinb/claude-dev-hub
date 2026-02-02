@@ -8,7 +8,6 @@ import Servers from './pages/Servers';
 import Settings from './pages/Settings';
 import Monitoring from './pages/Monitoring';
 import Vault from './pages/Vault';
-import Uptime from './pages/Uptime';
 import SSLMonitor from './pages/SSLMonitor';
 import Backups from './pages/Backups';
 import Security from './pages/Security';
@@ -70,7 +69,7 @@ function App() {
         <Route path="project/:id" element={<Project />} />
         <Route path="servers" element={<Servers />} />
         <Route path="monitoring" element={<Monitoring />} />
-        <Route path="uptime" element={<Uptime />} />
+        <Route path="uptime" element={<Navigate to="/servers" replace />} />
         <Route path="ssl" element={<SSLMonitor />} />
         <Route path="backups" element={<Backups />} />
         <Route path="security" element={<Security />} />

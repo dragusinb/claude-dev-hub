@@ -86,8 +86,28 @@ function Contabo() {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-700 text-red-400 rounded-xl p-4 mb-6">
-          <strong>Error:</strong> {error}
+        <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 mb-6">
+          <p className="text-red-400 font-medium mb-2">Error: {error}</p>
+          {error.includes('credentials') && (
+            <div className="mt-3 text-sm text-slate-300 bg-slate-800/50 rounded-lg p-4">
+              <p className="font-medium text-orange-400 mb-2">How to set up Contabo API credentials:</p>
+              <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                <li>Go to <a href="https://my.contabo.com/api/details" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Contabo API Settings</a></li>
+                <li>Create an API client if you don't have one</li>
+                <li>Go to <Link to="/vault" className="text-orange-400 hover:underline">Vault</Link> and add entry named exactly <code className="bg-slate-700 px-1 rounded">Contabo API</code></li>
+                <li>Fill in the fields:
+                  <ul className="list-disc list-inside ml-4 mt-1">
+                    <li><strong>Username:</strong> Your Contabo API username (email)</li>
+                    <li><strong>Password:</strong> Your Contabo API password</li>
+                    <li><strong>Notes:</strong> Add these two lines:<br/>
+                      <code className="bg-slate-700 px-1 rounded text-xs">Client ID: your-client-id</code><br/>
+                      <code className="bg-slate-700 px-1 rounded text-xs">Client Secret: your-client-secret</code>
+                    </li>
+                  </ul>
+                </li>
+              </ol>
+            </div>
+          )}
         </div>
       )}
 

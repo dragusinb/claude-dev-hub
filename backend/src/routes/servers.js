@@ -2,7 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { Client } from 'ssh2';
 import { exec } from 'child_process';
-import { createServer, getServers, getServer, deleteServer, getServerHealthHistory, updateServer } from '../models/database.js';
+import { createServer, getServers, getServer, deleteServer, getServerHealthHistory, updateServer, getLastHealthRecord } from '../models/database.js';
 
 const router = express.Router();
 
@@ -32,11 +32,45 @@ function executeLocally(commands) {
   });
 }
 
-// List all servers
+// List all servers with last health data
 router.get('/', (req, res) => {
   try {
     const servers = getServers(req.user.id);
-    res.json(servers);
+
+    // Enrich with last health data for each server
+    const enrichedServers = servers.map(server => {
+      const lastHealth = getLastHealthRecord(server.id);
+
+      let healthData = null;
+      if (lastHealth) {
+        // Calculate health score based on metrics
+        const cpuScore = Math.max(0, 100 - lastHealth.cpu);
+        const memoryScore = Math.max(0, 100 - (lastHealth.memory_percent || 0));
+        const diskScore = Math.max(0, 100 - (lastHealth.disk_percent || 0));
+        const score = Math.round((cpuScore + memoryScore + diskScore) / 3);
+
+        // Determine status based on score
+        let status = 'healthy';
+        if (score < 50) status = 'critical';
+        else if (score < 70) status = 'warning';
+
+        healthData = {
+          status,
+          score,
+          cpu: lastHealth.cpu || 0,
+          memory: lastHealth.memory_percent || 0,
+          disk: lastHealth.disk_percent || 0,
+          lastChecked: lastHealth.created_at
+        };
+      }
+
+      return {
+        ...server,
+        lastHealth: healthData
+      };
+    });
+
+    res.json(enrichedServers);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -182,8 +216,27 @@ router.post('/:id/test', async (req, res) => {
 
     const config = {
       host: server.host,
-      port: server.port,
-      username: server.username
+      port: server.port || 22,
+      username: server.username,
+      readyTimeout: 10000,
+      // Support older servers with different algorithms
+      algorithms: {
+        kex: [
+          'ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521',
+          'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256',
+          'diffie-hellman-group14-sha1', 'diffie-hellman-group1-sha1'
+        ],
+        cipher: [
+          'aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-gcm',
+          'aes128-gcm@openssh.com', 'aes256-gcm', 'aes256-gcm@openssh.com',
+          'aes256-cbc', 'aes192-cbc', 'aes128-cbc', '3des-cbc'
+        ],
+        serverHostKey: [
+          'ssh-ed25519', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384',
+          'ecdsa-sha2-nistp521', 'rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'
+        ],
+        hmac: ['hmac-sha2-256', 'hmac-sha2-512', 'hmac-sha1']
+      }
     };
 
     if (server.auth_type === 'password') {
@@ -266,8 +319,27 @@ router.post('/:id/exec', async (req, res) => {
 
     const config = {
       host: server.host,
-      port: server.port,
-      username: server.username
+      port: server.port || 22,
+      username: server.username,
+      readyTimeout: 15000,
+      // Support older servers with different algorithms
+      algorithms: {
+        kex: [
+          'ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521',
+          'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256',
+          'diffie-hellman-group14-sha1', 'diffie-hellman-group1-sha1'
+        ],
+        cipher: [
+          'aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-gcm',
+          'aes128-gcm@openssh.com', 'aes256-gcm', 'aes256-gcm@openssh.com',
+          'aes256-cbc', 'aes192-cbc', 'aes128-cbc', '3des-cbc'
+        ],
+        serverHostKey: [
+          'ssh-ed25519', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384',
+          'ecdsa-sha2-nistp521', 'rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'
+        ],
+        hmac: ['hmac-sha2-256', 'hmac-sha2-512', 'hmac-sha1']
+      }
     };
 
     if (server.auth_type === 'password') {
@@ -402,8 +474,27 @@ router.get('/:id/health', async (req, res) => {
 
     const config = {
       host: server.host,
-      port: server.port,
-      username: server.username
+      port: server.port || 22,
+      username: server.username,
+      readyTimeout: 10000,
+      // Support older servers with different algorithms
+      algorithms: {
+        kex: [
+          'ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521',
+          'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256',
+          'diffie-hellman-group14-sha1', 'diffie-hellman-group1-sha1'
+        ],
+        cipher: [
+          'aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-gcm',
+          'aes128-gcm@openssh.com', 'aes256-gcm', 'aes256-gcm@openssh.com',
+          'aes256-cbc', 'aes192-cbc', 'aes128-cbc', '3des-cbc'
+        ],
+        serverHostKey: [
+          'ssh-ed25519', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384',
+          'ecdsa-sha2-nistp521', 'rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'
+        ],
+        hmac: ['hmac-sha2-256', 'hmac-sha2-512', 'hmac-sha1']
+      }
     };
 
     if (server.auth_type === 'password') {

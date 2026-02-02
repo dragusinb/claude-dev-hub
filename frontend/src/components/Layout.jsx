@@ -10,18 +10,21 @@ function Layout() {
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/projects', icon: FolderGit2, label: 'Projects' },
-    { path: '/servers', icon: Server, label: 'Servers' },
+    // Infrastructure
+    { path: '/servers', icon: Server, label: 'Servers & Uptime' },
     { path: '/monitoring', icon: Activity, label: 'Monitoring' },
-    { path: '/uptime', icon: Clock, label: 'Uptime' },
-    { path: '/ssl', icon: Lock, label: 'SSL Monitor' },
-    { path: '/backups', icon: Database, label: 'Backups' },
-    { path: '/security', icon: ShieldCheck, label: 'Security' },
     { path: '/contabo', icon: Cloud, label: 'Contabo' },
-    { path: '/logs', icon: FileText, label: 'Log Viewer' },
+    // Security & Reliability
+    { path: '/ssl', icon: Lock, label: 'SSL Monitor' },
+    { path: '/security', icon: ShieldCheck, label: 'Security' },
+    { path: '/backups', icon: Database, label: 'Backups' },
+    // Operations
     { path: '/deployments', icon: Rocket, label: 'Deployments' },
-    { path: '/costs', icon: DollarSign, label: 'Costs' },
+    { path: '/logs', icon: FileText, label: 'Log Viewer' },
     { path: '/cron', icon: Timer, label: 'Cron Jobs' },
     { path: '/dns', icon: Globe, label: 'DNS' },
+    // Management
+    { path: '/costs', icon: DollarSign, label: 'Costs' },
     { path: '/vault', icon: Shield, label: 'Vault' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
