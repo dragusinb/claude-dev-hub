@@ -67,10 +67,50 @@ function Home() {
       ]);
 
       if (serversData.status === 'fulfilled') setServers(serversData.value || []);
-      if (securityData.status === 'fulfilled') setSecurity(securityData.value);
-      if (sslData.status === 'fulfilled') setSslCerts(sslData.value || []);
-      if (uptimeData.status === 'fulfilled') setUptime(uptimeData.value);
-      if (alertsData.status === 'fulfilled') setAlerts(alertsData.value || []);
+      if (securityData.status === 'fulfilled') {
+        // Security overview returns { stats: { avgScore, ... }, servers: [...] }
+        const secData = securityData.value;
+        setSecurity({
+          averageScore: secData?.stats?.avgScore || 0,
+          ...secData
+        });
+      }
+      if (sslData.status === 'fulfilled') {
+        // Map snake_case to camelCase for SSL certs
+        const certs = (sslData.value || []).map(cert => ({
+          ...cert,
+          daysUntilExpiry: cert.days_until_expiry,
+          validFrom: cert.valid_from,
+          validTo: cert.valid_to,
+          lastChecked: cert.last_checked,
+          alertDays: cert.alert_days
+        }));
+        setSslCerts(certs);
+      }
+      if (uptimeData.status === 'fulfilled') {
+        // Uptime returns array, calculate average
+        const uptimeArr = uptimeData.value || [];
+        const validUptimes = uptimeArr.filter(s => s.uptime24h !== null);
+        const avgUptime = validUptimes.length > 0
+          ? validUptimes.reduce((sum, s) => sum + s.uptime24h, 0) / validUptimes.length
+          : 99.9;
+        setUptime({
+          servers: uptimeArr,
+          averageUptime: avgUptime
+        });
+      }
+      if (alertsData.status === 'fulfilled') {
+        // Add severity based on alert_type if not present
+        const alertsWithSeverity = (alertsData.value || []).map(alert => ({
+          ...alert,
+          severity: alert.severity || (
+            alert.alert_type === 'server_down' ? 'critical' :
+            alert.alert_type?.includes('critical') ? 'critical' :
+            alert.alert_type?.includes('warning') ? 'warning' : 'info'
+          )
+        }));
+        setAlerts(alertsWithSeverity);
+      }
       if (deploymentsData.status === 'fulfilled') setDeployments(deploymentsData.value || []);
       if (backupsData.status === 'fulfilled') setBackups(backupsData.value || []);
       if (contaboData.status === 'fulfilled') {
@@ -179,7 +219,7 @@ function Home() {
               </div>
             </div>
             <Link
-              to="/monitoring"
+              to="/servers"
               className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-red-300 text-sm transition-colors"
             >
               View Details
@@ -215,7 +255,7 @@ function Home() {
           subtext="30-day avg"
           color="purple"
           trend={(uptime?.averageUptime || 100) >= 99 ? 'up' : 'neutral'}
-          link="/uptime"
+          link="/servers"
         />
         <StatCard
           icon={DollarSign}
@@ -237,7 +277,7 @@ function Home() {
               <Activity className="w-5 h-5 text-blue-400" />
               Server Health
             </h2>
-            <Link to="/monitoring" className="text-sm text-orange-400 hover:text-orange-300 flex items-center gap-1">
+            <Link to="/servers" className="text-sm text-orange-400 hover:text-orange-300 flex items-center gap-1">
               View All <ChevronRight className="w-4 h-4" />
             </Link>
           </div>
@@ -402,7 +442,7 @@ function Home() {
               <Bell className="w-5 h-5 text-red-400" />
               Recent Alerts
             </h2>
-            <Link to="/monitoring" className="text-sm text-orange-400 hover:text-orange-300 flex items-center gap-1">
+            <Link to="/servers" className="text-sm text-orange-400 hover:text-orange-300 flex items-center gap-1">
               View All <ChevronRight className="w-4 h-4" />
             </Link>
           </div>

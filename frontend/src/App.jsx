@@ -4,9 +4,8 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Project from './pages/Project';
-import Servers from './pages/Servers';
+import ServersMonitoring from './pages/ServersMonitoring';
 import Settings from './pages/Settings';
-import Monitoring from './pages/Monitoring';
 import Vault from './pages/Vault';
 import SSLMonitor from './pages/SSLMonitor';
 import Backups from './pages/Backups';
@@ -67,8 +66,8 @@ function App() {
         <Route index element={<Home />} />
         <Route path="projects" element={<Dashboard />} />
         <Route path="project/:id" element={<Project />} />
-        <Route path="servers" element={<Servers />} />
-        <Route path="monitoring" element={<Monitoring />} />
+        <Route path="servers" element={<ServersMonitoring />} />
+        <Route path="monitoring" element={<Navigate to="/servers" replace />} />
         <Route path="uptime" element={<Navigate to="/servers" replace />} />
         <Route path="ssl" element={<SSLMonitor />} />
         <Route path="backups" element={<Backups />} />

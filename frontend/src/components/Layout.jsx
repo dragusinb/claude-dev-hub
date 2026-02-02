@@ -11,8 +11,7 @@ function Layout() {
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/projects', icon: FolderGit2, label: 'Projects' },
     // Infrastructure
-    { path: '/servers', icon: Server, label: 'Servers & Uptime' },
-    { path: '/monitoring', icon: Activity, label: 'Monitoring' },
+    { path: '/servers', icon: Server, label: 'Servers Monitoring' },
     { path: '/contabo', icon: Cloud, label: 'Contabo' },
     // Security & Reliability
     { path: '/ssl', icon: Lock, label: 'SSL Monitor' },
