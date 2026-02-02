@@ -46,14 +46,14 @@ function Home() {
     try {
       // Load data with individual error handling
       const results = await Promise.allSettled([
-        api.getServers(),
-        api.getSecurityOverview(),
-        api.getSSLCertificates(),
-        api.getUptimeSummary(),
-        api.getAlertHistory(10),
-        api.getRecentDeploymentRuns(5),
-        api.getBackupHistory(5),
-        api.getContaboInstances()
+        api.getServers().catch(() => []),
+        api.getSecurityOverview().catch(() => null),
+        api.getSSLCertificates().catch(() => []),
+        api.getUptimeSummary().catch(() => []),
+        api.getAlertHistory(10).catch(() => []),
+        api.getRecentDeploymentRuns(5).catch(() => []),
+        api.getBackupHistory(5).catch(() => []),
+        api.getContaboInstances().catch(() => ({ instances: [] }))
       ]);
 
       const [
@@ -67,74 +67,94 @@ function Home() {
         contaboData
       ] = results;
 
-      // Process each result
-      if (serversData.status === 'fulfilled') {
-        setServers(serversData.value || []);
-      }
+      // Process each result with try-catch
+      try {
+        if (serversData.status === 'fulfilled') {
+          setServers(Array.isArray(serversData.value) ? serversData.value : []);
+        }
+      } catch (e) { console.error('Error processing servers:', e); }
 
-      if (securityData.status === 'fulfilled' && securityData.value) {
-        setSecurity({
-          averageScore: securityData.value?.stats?.avgScore || 0,
-          ...securityData.value
-        });
-      }
+      try {
+        if (securityData.status === 'fulfilled' && securityData.value) {
+          setSecurity({
+            averageScore: securityData.value?.stats?.avgScore || 0,
+            ...securityData.value
+          });
+        }
+      } catch (e) { console.error('Error processing security:', e); }
 
-      if (sslData.status === 'fulfilled') {
-        const certs = (sslData.value || []).map(cert => ({
-          ...cert,
-          daysUntilExpiry: cert.days_until_expiry,
-        }));
-        setSslCerts(certs);
-      }
+      try {
+        if (sslData.status === 'fulfilled') {
+          const certs = Array.isArray(sslData.value) ? sslData.value.map(cert => ({
+            ...cert,
+            daysUntilExpiry: cert?.days_until_expiry ?? 0,
+          })) : [];
+          setSslCerts(certs);
+        }
+      } catch (e) { console.error('Error processing SSL:', e); }
 
-      if (uptimeData.status === 'fulfilled') {
-        setUptime(uptimeData.value || []);
-      }
+      try {
+        if (uptimeData.status === 'fulfilled') {
+          setUptime(Array.isArray(uptimeData.value) ? uptimeData.value : []);
+        }
+      } catch (e) { console.error('Error processing uptime:', e); }
 
-      if (alertsData.status === 'fulfilled') {
-        setAlerts(alertsData.value || []);
-      }
+      try {
+        if (alertsData.status === 'fulfilled') {
+          setAlerts(Array.isArray(alertsData.value) ? alertsData.value : []);
+        }
+      } catch (e) { console.error('Error processing alerts:', e); }
 
-      if (deploymentsData.status === 'fulfilled') {
-        setDeployments(deploymentsData.value || []);
-      }
+      try {
+        if (deploymentsData.status === 'fulfilled') {
+          setDeployments(Array.isArray(deploymentsData.value) ? deploymentsData.value : []);
+        }
+      } catch (e) { console.error('Error processing deployments:', e); }
 
-      if (backupsData.status === 'fulfilled') {
-        setBackups(backupsData.value || []);
-      }
+      try {
+        if (backupsData.status === 'fulfilled') {
+          setBackups(Array.isArray(backupsData.value) ? backupsData.value : []);
+        }
+      } catch (e) { console.error('Error processing backups:', e); }
 
-      if (contaboData.status === 'fulfilled' && contaboData.value?.instances) {
-        const instances = contaboData.value.instances || [];
-        const totalMonthly = instances.reduce((sum, i) => sum + (parseFloat(i.monthlyPrice) || 0), 0);
-        setCosts({ monthly: totalMonthly, instances: instances.length });
-      }
+      try {
+        if (contaboData.status === 'fulfilled' && contaboData.value?.instances) {
+          const instances = Array.isArray(contaboData.value.instances) ? contaboData.value.instances : [];
+          const totalMonthly = instances.reduce((sum, i) => sum + (parseFloat(i?.monthlyPrice) || 0), 0);
+          setCosts({ monthly: totalMonthly, instances: instances.length });
+        }
+      } catch (e) { console.error('Error processing contabo:', e); }
 
       setLastRefresh(new Date());
     } catch (err) {
       console.error('Dashboard load error:', err);
-      if (!silent) setError(err.message);
+      if (!silent) setError(err.message || 'Failed to load dashboard');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }
 
-  // Calculate stats
-  const healthyServers = servers.filter(s => s.lastHealth?.status === 'healthy').length;
-  const warningServers = servers.filter(s => s.lastHealth?.status === 'warning').length;
-  const criticalServers = servers.filter(s => s.lastHealth?.status === 'critical').length;
+  // Calculate stats safely
+  const healthyServers = (servers || []).filter(s => s?.lastHealth?.status === 'healthy').length;
+  const warningServers = (servers || []).filter(s => s?.lastHealth?.status === 'warning').length;
+  const criticalServers = (servers || []).filter(s => s?.lastHealth?.status === 'critical').length;
 
-  const avgUptime = uptime.length > 0
-    ? Math.round(uptime.filter(s => s.uptime24h != null).reduce((sum, s) => sum + s.uptime24h, 0) / uptime.filter(s => s.uptime24h != null).length * 10) / 10
+  // Calculate avgUptime safely to avoid NaN
+  const validUptimeServers = (uptime || []).filter(s => s?.uptime24h != null && !isNaN(s.uptime24h));
+  const avgUptime = validUptimeServers.length > 0
+    ? Math.round(validUptimeServers.reduce((sum, s) => sum + s.uptime24h, 0) / validUptimeServers.length * 10) / 10
     : null;
 
-  const expiringSSL = sslCerts.filter(c => c.daysUntilExpiry <= 30).length;
-  const criticalSSL = sslCerts.filter(c => c.daysUntilExpiry <= 7).length;
+  const expiringSSL = (sslCerts || []).filter(c => (c?.daysUntilExpiry ?? 999) <= 30).length;
+  const criticalSSL = (sslCerts || []).filter(c => (c?.daysUntilExpiry ?? 999) <= 7).length;
 
-  const recentAlerts = alerts.filter(a => {
-    const alertTime = new Date(a.created_at);
-    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    return alertTime > hourAgo;
+  const recentAlerts = (alerts || []).filter(a => {
+    try {
+      const alertTime = new Date(a?.created_at);
+      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      return alertTime > hourAgo;
+    } catch { return false; }
   });
 
   if (loading) {
@@ -243,9 +263,9 @@ function Home() {
         <StatCard
           icon={Clock}
           label="Uptime"
-          value={avgUptime != null ? `${avgUptime}%` : '-'}
+          value={avgUptime != null && !isNaN(avgUptime) ? `${avgUptime}%` : '-'}
           subtext="24h average"
-          color={avgUptime >= 99 ? 'green' : avgUptime >= 95 ? 'yellow' : 'red'}
+          color={avgUptime != null && !isNaN(avgUptime) ? (avgUptime >= 99 ? 'green' : avgUptime >= 95 ? 'yellow' : 'red') : 'blue'}
           link="/servers"
         />
         <StatCard
@@ -272,7 +292,7 @@ function Home() {
             </Link>
           </div>
 
-          {servers.length === 0 ? (
+          {!servers || servers.length === 0 ? (
             <div className="text-center py-8 text-slate-500">
               <Server className="w-12 h-12 mx-auto mb-2 opacity-50" />
               <p>No servers configured</p>
@@ -281,13 +301,16 @@ function Home() {
           ) : (
             <div className="space-y-3">
               {servers.slice(0, 5).map(server => {
+                if (!server) return null;
                 const health = server.lastHealth || {};
                 const status = health.status || 'unknown';
-                const uptimeInfo = uptime.find(u => u.id === server.id);
+                const uptimeInfo = (uptime || []).find(u => u?.id === server.id);
+                const cpuVal = typeof health.cpu === 'number' ? health.cpu : null;
+                const memVal = typeof health.memory === 'number' ? health.memory : null;
 
                 return (
                   <div
-                    key={server.id}
+                    key={server.id || Math.random()}
                     className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
                       status === 'healthy' ? 'bg-green-500/5 border-green-500/20' :
                       status === 'warning' ? 'bg-yellow-500/5 border-yellow-500/20' :
@@ -301,19 +324,19 @@ function Home() {
                       status === 'critical' ? 'bg-red-500 animate-pulse' : 'bg-slate-500'
                     }`} />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{server.name}</div>
-                      <div className="text-xs text-slate-500">{server.host}</div>
+                      <div className="font-medium truncate">{server.name || 'Unknown'}</div>
+                      <div className="text-xs text-slate-500">{server.host || '-'}</div>
                     </div>
                     <div className="flex items-center gap-4 text-sm">
                       <div className="text-center">
-                        <div className={`font-medium ${health.cpu > 80 ? 'text-red-400' : 'text-slate-300'}`}>
-                          {health.cpu?.toFixed(0) || '-'}%
+                        <div className={`font-medium ${cpuVal > 80 ? 'text-red-400' : 'text-slate-300'}`}>
+                          {cpuVal != null ? `${cpuVal.toFixed(0)}%` : '-'}
                         </div>
                         <div className="text-xs text-slate-500">CPU</div>
                       </div>
                       <div className="text-center">
-                        <div className={`font-medium ${health.memory > 80 ? 'text-red-400' : 'text-slate-300'}`}>
-                          {health.memory?.toFixed(0) || '-'}%
+                        <div className={`font-medium ${memVal > 80 ? 'text-red-400' : 'text-slate-300'}`}>
+                          {memVal != null ? `${memVal.toFixed(0)}%` : '-'}
                         </div>
                         <div className="text-xs text-slate-500">RAM</div>
                       </div>
@@ -364,19 +387,19 @@ function Home() {
                 View All
               </Link>
             </div>
-            {sslCerts.length === 0 ? (
+            {!sslCerts || sslCerts.length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-4">No certificates monitored</p>
             ) : (
               <div className="space-y-2">
-                {sslCerts.slice(0, 5).map(cert => (
-                  <div key={cert.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate flex-1 text-slate-300">{cert.domain}</span>
+                {sslCerts.slice(0, 5).filter(c => c).map((cert, idx) => (
+                  <div key={cert.id || idx} className="flex items-center justify-between text-sm">
+                    <span className="truncate flex-1 text-slate-300">{cert.domain || 'Unknown'}</span>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      cert.daysUntilExpiry <= 7 ? 'bg-red-500/20 text-red-400' :
-                      cert.daysUntilExpiry <= 30 ? 'bg-yellow-500/20 text-yellow-400' :
+                      (cert.daysUntilExpiry ?? 999) <= 7 ? 'bg-red-500/20 text-red-400' :
+                      (cert.daysUntilExpiry ?? 999) <= 30 ? 'bg-yellow-500/20 text-yellow-400' :
                       'bg-green-500/20 text-green-400'
                     }`}>
-                      {cert.daysUntilExpiry}d
+                      {cert.daysUntilExpiry ?? '?'}d
                     </span>
                   </div>
                 ))}
@@ -394,14 +417,16 @@ function Home() {
             <Calendar className="w-5 h-5 text-purple-400" />
             Recent Activity
           </h2>
-          {deployments.length === 0 && backups.length === 0 ? (
+          {(!deployments || deployments.length === 0) && (!backups || backups.length === 0) ? (
             <p className="text-slate-500 text-sm text-center py-8">No recent activity</p>
           ) : (
             <div className="space-y-3">
               {[
-                ...deployments.map(d => ({ type: 'deploy', name: d.pipeline_name, status: d.status, time: d.started_at, icon: Rocket })),
-                ...backups.map(b => ({ type: 'backup', name: b.job_name, status: b.status, time: b.started_at, icon: Database }))
-              ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 5).map((item, i) => (
+                ...(deployments || []).filter(d => d).map(d => ({ type: 'deploy', name: d.pipeline_name || 'Deployment', status: d.status || 'unknown', time: d.started_at, icon: Rocket })),
+                ...(backups || []).filter(b => b).map(b => ({ type: 'backup', name: b.job_name || 'Backup', status: b.status || 'unknown', time: b.started_at, icon: Database }))
+              ].filter(item => item.time).sort((a, b) => {
+                try { return new Date(b.time) - new Date(a.time); } catch { return 0; }
+              }).slice(0, 5).map((item, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm">
                   <div className={`p-2 rounded-lg ${
                     item.status === 'success' ? 'bg-green-500/20' :
@@ -424,7 +449,7 @@ function Home() {
                       {item.status}
                     </span>
                     <div className="text-xs text-slate-500 mt-1">
-                      {new Date(item.time).toLocaleTimeString()}
+                      {item.time ? new Date(item.time).toLocaleTimeString() : '-'}
                     </div>
                   </div>
                 </div>
@@ -444,14 +469,14 @@ function Home() {
               View All
             </Link>
           </div>
-          {alerts.length === 0 ? (
+          {!alerts || alerts.length === 0 ? (
             <div className="text-center py-8 text-slate-500">
               <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500/50" />
               <p>No recent alerts</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {alerts.slice(0, 5).map((alert, i) => (
+              {alerts.slice(0, 5).filter(a => a).map((alert, i) => (
                 <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${
                   alert.alert_type === 'server_down' ? 'bg-red-500/10' :
                   alert.alert_type === 'server_up' ? 'bg-green-500/10' : 'bg-yellow-500/10'
@@ -461,9 +486,9 @@ function Home() {
                     alert.alert_type === 'server_up' ? 'text-green-400' : 'text-yellow-400'
                   }`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{alert.message}</p>
+                    <p className="text-sm truncate">{alert.message || 'Alert'}</p>
                     <p className="text-xs text-slate-500 mt-1">
-                      {new Date(alert.created_at).toLocaleString()}
+                      {alert.created_at ? new Date(alert.created_at).toLocaleString() : '-'}
                     </p>
                   </div>
                 </div>
